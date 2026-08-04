@@ -44,11 +44,120 @@ footer a{color:#7aa2f7}
 #result .kv span:last-child{text-align:right}
 #result .verdict{margin-top:8px;padding:7px 9px;border-radius:6px;font-weight:600}
 #result .muted{color:var(--muted);font-size:11.5px;margin-top:7px;font-weight:400}
+#aboutBtn{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+#aboutBtn:hover{color:var(--txt);border-color:#4a5262}
+#stale{display:none;background:#3a2a1a;border:1px solid #7a5a2a;color:#ffd39b;padding:5px 10px;border-radius:6px;font-size:12px}
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;overflow:auto;padding:40px 20px}
+#modalBox{max-width:860px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 26px}
+#modalBox h2{margin:0 0 4px;font-size:19px}
+#modalBox h3{margin:22px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:5px}
+#modalBox table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+#modalBox td{padding:5px 8px;border-bottom:1px solid #1f232c;vertical-align:top}
+#modalBox td:first-child{color:var(--muted);width:31%}
+#modalBox td:nth-child(2){width:17%;white-space:nowrap}
+#modalBox a{color:#7aa2f7}
+#modalBox .live{color:#78c19b}
+#modalBox .frozen{color:#e3c22b}
+#modalBox p{font-size:12.5px;line-height:1.6;color:var(--txt)}
+#modalBox .warnbox{background:#2a1e1e;border:1px solid #5a3a3a;border-radius:7px;padding:10px 12px;margin-top:10px;font-size:12.5px;line-height:1.55}
+#closeModal{float:right;background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
 </style></head><body>
 <header>
 <h1>New England LIHTC Siting Map</h1>
-<div id="sub">Connecticut, Rhode Island &amp; Massachusetts &middot; scores are <b>not</b> comparable across states</div>
+<div id="stale"></div>
+<button id="aboutBtn">About &amp; data sources</button>
+<div id="sub">Connecticut, Rhode Island &amp; Massachusetts &middot; scores are <b>not</b> comparable across states<br><span id="builtline"></span></div>
 </header>
+<div id="modal"><div id="modalBox">
+<button id="closeModal">Close</button>
+<h2>About this map</h2>
+<p>A siting screen for LIHTC applications in Connecticut, Rhode Island and Massachusetts. Each state's
+Qualified Allocation Plan scores geography differently and the three scales are <b>not comparable</b> —
+only the state you select is coloured, and its legend states the denominator.</p>
+<p><b>Built 4 August 2026.</b> Items marked <span class="live">live</span> are fetched from the publisher
+every time the page opens and stay current on their own. Items marked <span class="frozen">frozen</span>
+were transcribed from a document on the build date and <b>will not update themselves</b>.</p>
+
+<h3>Connecticut</h3>
+<table>
+<tr><td>Scoring — Housing Needs Index + Affordable Housing Appeals List</td><td class="frozen">2027–2028 <b>draft</b></td>
+<td><a href="https://www.chfa.org/assets/1/19/!2027-2028_Housing_Needs__Location_Guideline_publish.pdf" target="_blank">CHFA Housing Needs &amp; Location Guideline</a> — public-hearing version, not the adopted final</td></tr>
+<tr><td>Town boundaries</td><td class="live">2022</td>
+<td>data.ct.gov, served via a <a href="https://github.com/HandsOnDataViz/ct-boundaries" target="_blank">third-party GitHub mirror</a> — external dependency</td></tr>
+<tr><td>Sewer service</td><td class="live">2021 data, edited 2024</td>
+<td><a href="https://geodata.ct.gov/datasets/CTDEEP::connected-sewer-service-areas/about" target="_blank">CT DEEP Connected Sewer Service Areas</a></td></tr>
+<tr><td>Water — Exclusive Service Areas</td><td class="live">compiled 2017, updated 2018</td>
+<td><a href="https://portal.ct.gov/DPH/Drinking-Water/DWS/Public-Water-Supply-Map" target="_blank">CT DPH / WUCC</a> — authorised provider territory, <b>not</b> evidence of existing mains. Community systems only.</td></tr>
+</table>
+
+<h3>Rhode Island</h3>
+<table>
+<tr><td>Scoring — Community criterion A</td><td class="frozen">2026 QAP</td>
+<td>RIHousing 2026 Qualified Allocation Plan, §&nbsp;Community (13 of 147 points; criterion A only)</td></tr>
+<tr><td>Affordable housing % (LMIH)</td><td class="frozen">as of 2025</td>
+<td><a href="https://www.rihousing.com/public-information/rihousing-reports/low-moderate-income-housing-by-community/" target="_blank">RIHousing Final 2025 LMIH Chart</a> — published as a scan, transcribed by OCR</td></tr>
+<tr><td>Growth category</td><td class="frozen">adopted Dec 2025</td>
+<td><a href="https://housing.ri.gov/data-reports/state-housing-plan-housing-2030" target="_blank">Housing 2030</a>, Exhibit 16 (Continued / Modest / Strategic Growth)</td></tr>
+<tr><td>Municipal boundaries</td><td class="live">1997 survey base</td>
+<td><a href="https://www.rigis.org/datasets/edc::municipalities-1997/about" target="_blank">RIGIS Municipalities</a></td></tr>
+<tr><td>Sewer, water service, water jurisdictional, Urban Services Boundary</td><td class="live">varies</td>
+<td><a href="https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/MapServer" target="_blank">RIDEM Boundaries &amp; Regulatory Overlays</a> — vintage per layer not independently verified</td></tr>
+</table>
+
+<h3>Massachusetts</h3>
+<table>
+<tr><td>Scoring — jobs access (B-6) and rural (B-7)</td><td class="frozen">2025–2026 final</td>
+<td><a href="https://www.mass.gov/doc/2025-2026-lihtc-qap/download" target="_blank">EOHLC LIHTC QAP</a>, posted 9 Feb 2026 — scoring verified identical to the draft</td></tr>
+<tr><td>Subsidised Housing Inventory</td><td class="frozen">30 Sept 2025</td>
+<td><a href="https://www.mass.gov/doc/subsidized-housing-inventory-2/download" target="_blank">Chapter 40B SHI</a> — Priority 5 threshold is <b>12%</b>, not the statutory 10%</td></tr>
+<tr><td>Job accessibility (auto VMT per commuter)</td><td class="frozen">undated at source</td>
+<td>EOHLC Job Accessibility Chart, published on the QAP page</td></tr>
+<tr><td>Rural — density &lt; 500/sq mi</td><td class="live">2020 census pop</td>
+<td>Computed from MassGIS <code>POP2020</code> / <code>AREA_SQMI</code>. Area appears to include water, which flatters coastal towns near the line.</td></tr>
+<tr><td>Gateway Cities</td><td class="frozen">26 per statute</td>
+<td>MGL c.23A §3A. The QAP text still says 24.</td></tr>
+<tr><td>Tract poverty gate</td><td class="live">latest ACS 5-year</td>
+<td>Esri Living Atlas ACS (table B17020) — refreshes annually</td></tr>
+<tr><td>Qualified Census Tracts</td><td class="live">FY2026 designation</td>
+<td><a href="https://www.huduser.gov/portal/datasets/qct.html" target="_blank">HUD Qualified Census Tracts 2026</a> — checked at the screened point; HUD redesignates annually, so swap the service URL to the new year when it publishes</td></tr>
+<tr><td>Municipal boundaries</td><td class="live">survey-based</td>
+<td><a href="https://www.mass.gov/info-details/massgis-data-municipalities" target="_blank">MassGIS Municipalities</a></td></tr>
+<tr><td>Sewer service</td><td class="live">Oct 2025</td>
+<td><a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-sewer-system-service-area-boundaries" target="_blank">MassDEP WURP</a> (PubV2025_10)</td></tr>
+<tr><td>Public water service</td><td class="live">March 2025</td>
+<td><a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-public-drinking-water-system-service-area-boundaries" target="_blank">MassDEP WURP</a> (PubV2025_3)</td></tr>
+</table>
+
+<h3>How far to trust the utility layers</h3>
+<div class="warnbox">
+All three states built these the same two ways: where a utility supplied pipe locations, a <b>300-foot buffer</b>
+was drawn around the lines; where a town is 97%+ served and nothing better existed, the <b>municipal boundary</b>
+was used as the service area. A polygon edge is therefore often a cartographic artifact rather than a pipe.
+MassDEP states plainly that its data "is not appropriate for site-specific or parcel-specific analysis"; the same
+caveat applies to CT and RI, less loudly. <b>Connecticut's water ESA layer is the weakest</b> — 2017–18 vintage,
+and it maps who is <i>entitled</i> to serve, not where mains exist. Confirm service with the municipality before
+relying on any of it. This matters most for Rhode Island's conditional 5-point tier, the one place a service-area
+boundary decides a score.
+</div>
+
+<h3>Not mapped, and why</h3>
+<table>
+<tr><td>MA — MCAS school quality (8 pts)</td><td>—</td><td>The QAP scores "Advanced or Proficient" 10th-grade MCAS, a scale DESE no longer reports. The reference chart linked from EOHLC's own page is from 2013. Unresolved — a question for EOHLC.</td></tr>
+<tr><td>MA — site-level B-6 components</td><td>—</td><td>Transit within 0.5 mi (4 pts), higher education within 2 mi (2), health care within 1 mi (2)</td></tr>
+<tr><td>MA — Housing Production Plan communities (2 pts, B-2)</td><td>—</td>
+<td><b>Deliberately excluded.</b> EOHLC publishes status only through an interactive dashboard, not a machine-readable list, and the page was last updated September 2024. More importantly, HPP status is volatile — plans run five years and certification is re-earned annually — so a frozen list would go stale quickly and quietly. Check the <a href="https://www.mass.gov/info-details/chapter-40b-housing-production-plan" target="_blank">EOHLC status table</a> directly.</td></tr>
+<tr><td>MA — Priority Development Areas (2 pts, B-2)</td><td>—</td><td>Designated by regional planning agencies; coverage uneven, no single statewide service</td></tr>
+<tr><td>MA — formal neighborhood plans (2 pts, B-2)</td><td>—</td><td>No statewide dataset exists; municipality by municipality</td></tr>
+<tr><td>CT — Location Index</td><td>—</td><td>Scored by census tract, not town; drives the Location Set-Aside</td></tr>
+<tr><td>RI — Community criterion B</td><td>—</td><td>QCT / CCRP (1 pt) and graduation rates (2 pts)</td></tr>
+</table>
+
+<h3>If you are re-using this later</h3>
+<p>Re-check, in this order: (1) whether CHFA adopted the 2027–2028 guideline and how it changed; (2) the current
+RI QAP — as of 1 January 2026 the Executive Office of Housing writes it, not RIHousing, and a 2027 draft was in
+public comment in August 2026; (3) the current EOHLC QAP and a newer SHI, which is updated roughly every two
+years; (4) RIHousing's newer LMIH chart, published annually. The live layers above need no action.</p>
+</div></div>
 <div id="wrap"><div id="map"></div>
 <div id="side">
 
@@ -172,34 +281,50 @@ const STATES = {
 
   ,MA: {
     label:"Massachusetts", center:[42.3,-71.8],
-    vintage:"2025–2026 EOHLC QAP · SHI as of 9/30/2025 · EOHLC Job Accessibility chart",
-    src:{kind:"geojson", url:"https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Municipalities_Hosted/FeatureServer/0/query?where=1%3D1&outFields=TOWN&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0004&geometryPrecision=5&f=geojson"},
+    vintage:"2025–2026 EOHLC QAP (final) · SHI 9/30/2025 · EOHLC Job Accessibility chart · rural from MassGIS 2020 pop/area",
+    src:{kind:"geojson", url:"https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Municipalities_Hosted/FeatureServer/0/query?where=1%3D1&outFields=TOWN,POP2020,AREA_SQMI&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0004&geometryPrecision=5&f=geojson"},
     nameOf:p=>String((p&&(p.TOWN||p.NAME||p.town))||"").trim(),
     lookup:function(n){const k=Object.keys(MA_DATA).find(x=>x.toUpperCase()===String(n).toUpperCase());
       return k?{name:k,d:MA_DATA[k]}:null;},
+    // B-7 Rural (4 pts): density < 500/sq mi. Computed live from the MassGIS
+    // attributes rather than baked in, so it tracks the source layer.
+    ingest:function(feats){
+      for(const f of feats){
+        const r=this.lookup(this.nameOf(f.properties)); if(!r) continue;
+        const p=f.properties.POP2020, a=f.properties.AREA_SQMI;
+        if(p!=null && a){ r.d.dens=p/a; r.d.rural=(p/a)<500; r.d.ruralPts=r.d.rural?4:0; }
+      }
+      if(active==="MA"){ restyle(); drawLegend(); render(document.getElementById("search").value.toLowerCase()); }
+    },
+    totalPts:function(d){ return (d.pts||0) + (d.ruralPts||0); },
     list:()=>Object.keys(MA_DATA).sort(),
-    columns:["Municipality","SHI %","Jobs pts"],
+    columns:["Municipality","SHI %","Muni pts"],
     row:function(n){const d=MA_DATA[n];
-      return [n+(d.gw?' <span style="color:#ffd166" title="Gateway City">◆</span>':""),
-              d.shi.toFixed(2)+"%", "<b>"+d.pts+"</b>"];},
+      return [n+(d.gw?' <span style="color:#ffd166" title="Gateway City">◆</span>':"")
+               +(d.rural?' <span style="color:#8fd3a0" title="Rural (B-7)">▲</span>':""),
+              d.shi.toFixed(2)+"%", "<b>"+this.totalPts(d)+"</b>"];},
     color:function(n){const r=this.lookup(n); if(!r) return "#6e7480";
-      return {6:"#3aa655",4:"#e3c22b",2:"#3d7fc1",0:"#6e7480"}[r.d.pts];},
+      const t=this.totalPts(r.d);
+      return t>=8?"#3aa655":t>=4?"#e3c22b":t>=2?"#3d7fc1":"#6e7480";},
     tooltip:function(n){const r=this.lookup(n); if(!r) return "<b>"+n+"</b>"; const d=r.d;
       return `<b>${r.name}</b>${d.gw?" &middot; <span style='color:#ffd166'>Gateway City</span>":""}`+
         `<br>SHI ${d.shi.toFixed(2)}% — Priority 5 (&lt;12%) ${d.p5?"eligible":"not eligible"}`+
-        `<br>Auto VMT/commuter: ${d.vmt}`+
-        `<br><b>Jobs access: ${d.pts} pts</b>`;},
-    legend:{title:"Access to employment points",
-      rows:[["#3aa655","6 — ≤5 mi VMT/commuter"],["#e3c22b","4 — ≤7 mi"],["#3d7fc1","2 — ≤9 mi"],["#6e7480","0 — over 9 mi"]],
-      denom:"6 of 186 total points, inside the 14-point “Area of Opportunity” category. ◆ = Gateway City (Priority 2). Municipal SHI under 12% opens Priority 5."},
+        `<br>Jobs access (B-6): ${d.pts} pts &middot; VMT ${d.vmt}`+
+        (d.dens!=null?`<br>Rural (B-7): ${d.rural?"yes":"no"} — ${Math.round(d.dens)}/sq mi`:"")+
+        `<br><b>Municipal total: ${this.totalPts(d)} pts</b>`;},
+    legend:{title:"Municipal points (jobs + rural)",
+      rows:[["#3aa655","8–10"],["#e3c22b","4–6"],["#3d7fc1","2"],["#6e7480","0"]],
+      denom:"Jobs access (B-6, up to 6) + Rural (B-7, 4) = up to 10 of 186 points. ◆ Gateway City (Priority 2) · ▲ Rural. SHI under 12% opens Priority 5. <b>Jobs points are gated on a poverty test — screen an address to check.</b>"},
     score:function(n,util){const r=this.lookup(n); if(!r) return null; const d=r.d;
-      return {pts:d.pts+" jobs pts",
-        color:d.pts===6?"#3aa655":d.pts===4?"#e3c22b":d.pts===2?"#3d7fc1":"#6e7480",
-        rows:[["Auto VMT / commuter",d.vmt],
+      const t=this.totalPts(d);
+      return {pts:t+" municipal pts",
+        color:t>=8?"#3aa655":t>=4?"#e3c22b":t>=2?"#3d7fc1":"#6e7480",
+        rows:[["Jobs access (B-6)",d.pts+" pts — VMT "+d.vmt],
+              ["Rural (B-7)",(d.dens!=null?(d.rural?"4 pts — ":"0 pts — ")+Math.round(d.dens)+"/sq mi":"—")],
               ["SHI",d.shi.toFixed(2)+"%"],
               ["Priority 5 (SHI &lt;12%)",d.p5?"Eligible":"Not eligible"],
               ["Gateway City (Priority 2)",d.gw?"Yes":"No"]],
-        note:"Massachusetts geography mostly sets <i>which priority category you can enter</i>, not points. The only clean municipal point criterion is access to employment (6 pts). The MCAS school-quality criterion (8 pts) is not mapped — see notes. MassDEP states its sewer and water layers are <b>not appropriate for site-specific analysis</b>; treat those rows as planning-level only."};},
+        note:"Massachusetts geography mostly sets <i>which priority category you can enter</i>, not points. Mapped here: jobs access (B-6) and rural (B-7). <b>Not</b> mapped: MCAS school quality (8 pts, uses a retired scoring scale), and the site-level transit / higher-ed / health-care components of B-6. MassDEP states its sewer and water layers are <b>not appropriate for site-specific analysis</b>."};},
     utils:[
       {id:"ma_sewer", label:"MA sewered area (MassDEP POTW)", color:"#00d8b4",
        url:"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/DEP_SEWER_SERVICE_AREAS/FeatureServer/2"},
@@ -209,6 +334,20 @@ const STATES = {
        url:"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/DEP_SEWER_SERVICE_AREAS/FeatureServer/1"}
     ],
     screenUtils:{water:"ma_water", sewer:"ma_sewer"},
+    // B-6 gate: tract poverty must be under 15% (municipal rate is an alternative).
+    extra: async function(ll){
+      const r = await hits("https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/ACS_Poverty_by_Age_Boundaries/FeatureServer/2", ll);
+      if(!r.ok || !r.features.length)
+        return {rows:[["Tract poverty (ACS)","<i>unavailable</i>"]],
+                warn:"Could not check the poverty gate — B-6 jobs points are unconfirmed."};
+      const p = r.features[0].properties["B17020_calc_pctPovE"];
+      const nm = r.features[0].properties["NAME"]||"";
+      if(p==null) return {rows:[["Tract poverty (ACS)","<i>no estimate</i>"]],warn:null};
+      const pass = p < 15;
+      return {rows:[["Tract poverty (ACS)", p.toFixed(1)+"% — "+nm]],
+        warn: pass ? null
+          : "Tract poverty is "+p.toFixed(1)+"%, at or above 15%. The B-6 jobs points shown may not be available unless the municipal rate is under 15% or HLC grants a case-by-case exception. Rural (B-7) is unaffected."};
+    },
     sources:'Boundaries <a href="https://www.mass.gov/info-details/massgis-data-municipalities" target="_blank">MassGIS</a> · <a href="https://www.mass.gov/doc/subsidized-housing-inventory-2/download" target="_blank">SHI 9/30/2025</a> · <a href="https://www.mass.gov/doc/2025-2026-lihtc-qap/download" target="_blank">EOHLC QAP</a> · <a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-sewer-system-service-area-boundaries" target="_blank">MassDEP sewer</a>'
   }
 
@@ -278,6 +417,7 @@ function loadState(code){
               tr.classList.add("sel"); tr.scrollIntoView({block:"center"}); } });
     map.on("mouseout",()=>{ cool(); hit.closeTooltip(); });
     G[code]={fill:fill,hit:hit,feats:gj.features||[]};
+    if(typeof STATES[code].ingest==="function") STATES[code].ingest(gj.features||[]);
     lift();
   }).catch(e=>warn(S.label+" boundaries failed to load ("+(e.message||"network")+")."));
 }
@@ -478,6 +618,17 @@ async function screen(q){
   ids.forEach((id,i)=>res[id]=got[i]);
 
   const sc=S.score(S.lookup(loc.name)?S.lookup(loc.name).name:loc.name,res);
+  let ex=null; if(typeof S.extra==="function"){ try{ ex=await S.extra(ll); }catch(e){ ex=null; } }
+
+  // HUD Qualified Census Tract — relevant in all three states (MA Priority 2 and
+  // B-8, RI criterion B, CT federal criteria). Checked at the point, not mapped.
+  let qct=null;
+  try{
+    const q=await hits("https://services.arcgis.com/VTyQ9soqVukalItT/arcgis/rest/services/QUALIFIED_CENSUS_TRACTS_2026/FeatureServer/0", ll);
+    qct = q.ok ? (q.features.length>0) : null;
+  }catch(e){ qct=null; }
+  const QCTNOTE={CT:"", RI:"RI awards 1 pt for a QCT and/or a CCRP (criterion B).",
+                 MA:"MA: opens Priority 2, and up to 3 pts under B-8 if paired with a concerted revitalization plan."}[loc.code]||"";
   const sw=res[S.screenUtils.sewer], wa=res[S.screenUtils.water];
   const problems=[["sewer",sw],["water",wa]].filter(([,r])=>r&&!r.ok).map(([n,r])=>n+": "+r.err);
 
@@ -485,12 +636,35 @@ async function screen(q){
     `<div class="big">${(S.lookup(loc.name)||{name:loc.name}).name}, ${loc.code}</div>`+
     `<div class="kv"><span>Matched</span><span>${m.matchedAddress||""}</span></div>`+
     (sc?sc.rows.map(([k,v])=>`<div class="kv"><span>${k}</span><span>${v}</span></div>`).join(""):"")+
+    (ex?ex.rows.map(([k,v])=>`<div class="kv"><span>${k}</span><span>${v}</span></div>`).join(""):"")+
+    `<div class="kv"><span>Qualified Census Tract (2026)</span><span>${qct===null?"<i>unavailable</i>":(qct?"Yes":"No")}</span></div>`+
     `<div class="kv"><span>Sewer</span><span>${yn(sw)}</span></div>`+
     `<div class="kv"><span>Water service</span><span>${yn(wa)}</span></div>`+
     (sc?`<div class="verdict" style="background:${sc.color}22;border:1px solid ${sc.color};color:${sc.color}">${S.label}: ${sc.pts}</div>`:"")+
     (problems.length?`<div class="muted" style="color:#ffb4a2">Could not reach — ${problems.join("; ")}. Those rows are not answers.</div>`:"")+
+    (ex&&ex.warn?`<div class="muted" style="color:#ffb4a2">⚠ ${ex.warn}</div>`:"")+
+    (qct===true&&QCTNOTE?`<div class="muted">${QCTNOTE}</div>`:"")+
     `<div class="muted">${sc?sc.note:""}</div>`;
 }
 document.getElementById("addr").addEventListener("keydown",e=>{
   if(e.key==="Enter"&&e.target.value.trim())screen(e.target.value.trim());});
+
+// ---------- about / provenance ----------
+const BUILT=new Date("2026-08-04T00:00:00Z");
+(function(){
+  const b=document.getElementById("builtline");
+  b.textContent="Data compiled 4 Aug 2026 — see About for per-source dates";
+  const months=(Date.now()-BUILT.getTime())/(1000*60*60*24*30.44);
+  if(months>18){
+    const s=document.getElementById("stale");
+    s.style.display="block";
+    s.innerHTML="&#9888; This map's scoring data was compiled "+Math.floor(months/12)+
+      "+ years ago and is probably out of date. See <b>About &amp; data sources</b>.";
+  }
+  const m=document.getElementById("modal");
+  document.getElementById("aboutBtn").onclick=()=>{m.style.display="block";};
+  document.getElementById("closeModal").onclick=()=>{m.style.display="none";};
+  m.onclick=e=>{ if(e.target===m) m.style.display="none"; };
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape") m.style.display="none"; });
+})();
 </script></body></html>
