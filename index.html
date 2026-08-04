@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>New England LIHTC Siting Map — CT, RI &amp; MA</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e6e9ef;--muted:#98a1b3;}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--txt);}
+header{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:16px;font-weight:600;letter-spacing:-.01em}
+#sub{color:var(--muted);font-size:12px;margin-left:auto;text-align:right}
+#wrap{display:flex;height:calc(100vh - 58px);}
+#map{flex:1;background:#0b0d11}
+#side{width:345px;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
+.ctrl{padding:11px 12px;border-bottom:1px solid var(--line)}
+input,select{width:100%;padding:7px 9px;background:#0f1115;border:1px solid var(--line);color:var(--txt);border-radius:6px;font:inherit}
+label.hdr{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px}
+.chk{margin:4px 0}
+label.cb{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer}
+label.cb input{width:auto;margin:0}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;flex:0 0 auto}
+#list{overflow:auto;flex:1}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:sticky;top:0;background:var(--panel);text-align:left;padding:7px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--line)}
+td{padding:5px 10px;border-bottom:1px solid #1f232c}
+tr:hover td{background:#1e222b;cursor:pointer}
+tr.sel td{background:#2b3444}
+.note{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.45}
+.warn{font-size:11.5px;color:#ffb4a2;margin-top:7px;line-height:1.4}
+.legend{background:rgba(23,26,33,.95);padding:10px 12px;border-radius:8px;border:1px solid var(--line);font-size:12px;line-height:1.85;max-width:265px}
+.legend b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px}
+.legend .row{display:flex;align-items:center;gap:7px}
+.legend .denom{color:var(--muted);font-size:10.5px;margin-top:6px;line-height:1.35;border-top:1px solid var(--line);padding-top:6px}
+.leaflet-tooltip{background:#171a21;border:1px solid var(--line);color:var(--txt);box-shadow:none;font-size:12px}
+.leaflet-tooltip:before{display:none}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#171a21;color:var(--txt);border:1px solid var(--line)}
+footer{padding:9px 12px;font-size:10.5px;color:var(--muted);border-top:1px solid var(--line)}
+footer a{color:#7aa2f7}
+#result{margin-top:10px;font-size:12.5px;line-height:1.6}
+#result .big{font-size:15px;font-weight:600;margin:2px 0 6px}
+#result .kv{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #1f232c;padding:3px 0}
+#result .kv span:first-child{color:var(--muted)}
+#result .kv span:last-child{text-align:right}
+#result .verdict{margin-top:8px;padding:7px 9px;border-radius:6px;font-weight:600}
+#result .muted{color:var(--muted);font-size:11.5px;margin-top:7px;font-weight:400}
+</style></head><body>
+<header>
+<h1>New England LIHTC Siting Map</h1>
+<div id="sub">Connecticut, Rhode Island &amp; Massachusetts &middot; scores are <b>not</b> comparable across states</div>
+</header>
+<div id="wrap"><div id="map"></div>
+<div id="side">
+
+<div class="ctrl"><label class="hdr">Active scoring</label>
+<select id="state">
+  <option value="CT">Connecticut — CHFA Housing Needs &amp; Location</option>
+  <option value="RI">Rhode Island — RIHousing QAP Community criterion A</option>
+  <option value="MA">Massachusetts — EOHLC access to employment</option>
+</select>
+<div class="note">Only the active state is colored. The other renders neutral so you keep the geography without implying the two scales mean the same thing &mdash; they don't.</div>
+</div>
+
+<div class="ctrl"><label class="hdr">Screen an address</label>
+<input id="addr" placeholder="123 Main St, Providence RI &crarr;">
+<div id="result"></div>
+</div>
+
+<div class="ctrl"><label class="hdr">Utility overlays</label>
+<div id="utils"></div>
+<div class="chk" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+  <label class="cb"><input type="checkbox" id="roads"><span class="sw" style="background:#8b93a3"></span>Roads &amp; labels</label></div>
+<div class="note" id="utilnote"></div>
+</div>
+
+<div class="ctrl"><label class="hdr">Find a municipality</label><input id="search" placeholder="Type a name..."></div>
+<div id="list"><table><thead><tr id="thr"></tr></thead><tbody id="tb"></tbody></table></div>
+<footer id="foot"></footer>
+</div></div>
+<script>
+/* ============================================================================
+   PER-STATE CONFIG.  Adding a state = adding one block here.
+   Each block supplies: boundary source, name field, baked scoring data,
+   a score() returning the panel/legend payload, and its utility services.
+   Nothing outside STATES should need to know which state it is looking at.
+   ========================================================================== */
+const CT_DATA = {"Andover": [1, 5, 6], "Ansonia": [2, 0, 2], "Ashford": [2, 5, 7], "Avon": [5, 5, 10], "Barkhamsted": [3, 5, 8], "Beacon Falls": [2, 5, 7], "Berlin": [3, 0, 3], "Bethany": [1, 5, 6], "Bethel": [5, 5, 10], "Bethlehem": [5, 5, 10], "Bloomfield": [5, 0, 5], "Bolton": [4, 5, 9], "Bozrah": [1, 5, 6], "Branford": [5, 5, 10], "Bridgeport": [5, 0, 5], "Bridgewater": [1, 5, 6], "Bristol": [4, 0, 4], "Brookfield": [3, 5, 8], "Brooklyn": [2, 5, 7], "Burlington": [1, 5, 6], "Canaan": [1, 5, 6], "Canterbury": [4, 5, 9], "Canton": [3, 5, 8], "Chaplin": [1, 5, 6], "Cheshire": [2, 5, 7], "Chester": [1, 5, 6], "Clinton": [3, 5, 8], "Colchester": [5, 5, 10], "Colebrook": [1, 5, 6], "Columbia": [1, 5, 6], "Cornwall": [3, 5, 8], "Coventry": [4, 5, 9], "Cromwell": [2, 5, 7], "Danbury": [5, 0, 5], "Darien": [4, 5, 9], "Deep River": [3, 5, 8], "Derby": [5, 0, 5], "Durham": [2, 5, 7], "East Granby": [1, 5, 6], "East Haddam": [1, 5, 6], "East Hampton": [4, 5, 9], "East Hartford": [5, 0, 5], "East Haven": [4, 5, 9], "East Lyme": [5, 5, 10], "East Windsor": [4, 0, 4], "Eastford": [1, 5, 6], "Easton": [1, 5, 6], "Ellington": [2, 5, 7], "Enfield": [3, 0, 3], "Essex": [2, 5, 7], "Fairfield": [4, 5, 9], "Farmington": [5, 5, 10], "Franklin": [1, 5, 6], "Glastonbury": [5, 5, 10], "Goshen": [4, 5, 9], "Granby": [3, 5, 8], "Greenwich": [4, 5, 9], "Griswold": [2, 5, 7], "Groton": [4, 0, 4], "Guilford": [4, 5, 9], "Haddam": [4, 5, 9], "Hamden": [5, 5, 10], "Hampton": [1, 5, 6], "Hartford": [5, 0, 5], "Hartland": [2, 5, 7], "Harwinton": [3, 5, 8], "Hebron": [1, 5, 6], "Kent": [3, 5, 8], "Killingly": [3, 5, 8], "Killingworth": [2, 5, 7], "Lebanon": [2, 5, 7], "Ledyard": [1, 5, 6], "Lisbon": [1, 5, 6], "Litchfield": [3, 5, 8], "Lyme": [1, 5, 6], "Madison": [2, 5, 7], "Manchester": [5, 0, 5], "Mansfield": [5, 5, 10], "Marlborough": [1, 5, 6], "Meriden": [3, 0, 3], "Middlebury": [2, 5, 7], "Middlefield": [3, 5, 8], "Middletown": [5, 0, 5], "Milford": [4, 5, 9], "Monroe": [1, 5, 6], "Montville": [2, 5, 7], "Morris": [4, 5, 9], "Naugatuck": [5, 5, 10], "New Britain": [5, 0, 5], "New Canaan": [2, 5, 7], "New Fairfield": [1, 5, 6], "New Hartford": [2, 5, 7], "New Haven": [5, 0, 5], "New London": [5, 0, 5], "New Milford": [3, 5, 8], "Newington": [4, 0, 4], "Newtown": [2, 5, 7], "Norfolk": [1, 5, 6], "North Branford": [1, 5, 6], "North Canaan": [1, 5, 6], "North Haven": [4, 5, 9], "North Stonington": [2, 5, 7], "Norwalk": [5, 0, 5], "Norwich": [5, 0, 5], "Old Lyme": [1, 5, 6], "Old Saybrook": [4, 5, 9], "Orange": [4, 5, 9], "Oxford": [3, 5, 8], "Plainfield": [4, 0, 4], "Plainville": [4, 5, 9], "Plymouth": [2, 5, 7], "Pomfret": [1, 5, 6], "Portland": [2, 5, 7], "Preston": [3, 5, 8], "Prospect": [2, 5, 7], "Putnam": [3, 0, 3], "Redding": [2, 5, 7], "Ridgefield": [3, 5, 8], "Rocky Hill": [4, 5, 9], "Roxbury": [4, 5, 9], "Salem": [3, 5, 8], "Salisbury": [1, 5, 6], "Scotland": [1, 5, 6], "Seymour": [3, 5, 8], "Sharon": [4, 5, 9], "Shelton": [3, 5, 8], "Sherman": [2, 5, 7], "Simsbury": [3, 5, 8], "Somers": [1, 5, 6], "South Windsor": [2, 5, 7], "Southbury": [4, 5, 9], "Southington": [3, 5, 8], "Sprague": [2, 5, 7], "Stafford": [2, 5, 7], "Stamford": [5, 0, 5], "Sterling": [1, 5, 6], "Stonington": [4, 5, 9], "Stratford": [4, 5, 9], "Suffield": [2, 5, 7], "Thomaston": [2, 5, 7], "Thompson": [4, 5, 9], "Tolland": [2, 5, 7], "Torrington": [5, 0, 5], "Trumbull": [3, 5, 8], "Union": [3, 5, 8], "Vernon": [4, 0, 4], "Voluntown": [4, 5, 9], "Wallingford": [3, 5, 8], "Warren": [1, 5, 6], "Washington": [1, 5, 6], "Waterbury": [5, 0, 5], "Waterford": [4, 5, 9], "Watertown": [4, 5, 9], "West Hartford": [5, 5, 10], "West Haven": [5, 0, 5], "Westbrook": [5, 5, 10], "Weston": [2, 5, 7], "Westport": [2, 5, 7], "Wethersfield": [3, 5, 8], "Willington": [3, 5, 8], "Wilton": [2, 5, 7], "Winchester": [5, 0, 5], "Windham": [5, 0, 5], "Windsor": [5, 5, 10], "Windsor Locks": [3, 0, 3], "Wolcott": [3, 5, 8], "Woodbridge": [4, 5, 9], "Woodbury": [3, 5, 8], "Woodstock": [4, 5, 9]};
+const MA_DATA = {"Abington": {"shi": 10.1, "vmt": 10.91, "pts": 0, "gw": false, "p5": true}, "Acton": {"shi": 10.58, "vmt": 11.83, "pts": 0, "gw": false, "p5": true}, "Acushnet": {"shi": 2.22, "vmt": 12.62, "pts": 0, "gw": false, "p5": true}, "Adams": {"shi": 7.54, "vmt": 9.7, "pts": 0, "gw": false, "p5": true}, "Agawam": {"shi": 5.17, "vmt": 9.27, "pts": 0, "gw": false, "p5": true}, "Alford": {"shi": 0.0, "vmt": 11.88, "pts": 0, "gw": false, "p5": true}, "Amesbury": {"shi": 8.21, "vmt": 15.18, "pts": 0, "gw": false, "p5": true}, "Amherst": {"shi": 12.81, "vmt": 9.68, "pts": 0, "gw": false, "p5": false}, "Andover": {"shi": 12.57, "vmt": 11.72, "pts": 0, "gw": false, "p5": false}, "Arlington": {"shi": 6.38, "vmt": 5.95, "pts": 4, "gw": false, "p5": true}, "Ashburnham": {"shi": 1.18, "vmt": 17.67, "pts": 0, "gw": false, "p5": true}, "Ashby": {"shi": 0.0, "vmt": 18.51, "pts": 0, "gw": false, "p5": true}, "Ashfield": {"shi": 2.38, "vmt": 16.39, "pts": 0, "gw": false, "p5": true}, "Ashland": {"shi": 5.83, "vmt": 11.27, "pts": 0, "gw": false, "p5": true}, "Athol": {"shi": 5.65, "vmt": 16.52, "pts": 0, "gw": false, "p5": true}, "Attleboro": {"shi": 6.23, "vmt": 11.87, "pts": 0, "gw": true, "p5": true}, "Auburn": {"shi": 7.19, "vmt": 12.15, "pts": 0, "gw": false, "p5": true}, "Avon": {"shi": 5.36, "vmt": 9.53, "pts": 0, "gw": false, "p5": true}, "Ayer": {"shi": 5.84, "vmt": 12.76, "pts": 0, "gw": false, "p5": true}, "Barnstable": {"shi": 7.21, "vmt": 11.67, "pts": 0, "gw": true, "p5": true}, "Barre": {"shi": 3.54, "vmt": 17.02, "pts": 0, "gw": false, "p5": true}, "Becket": {"shi": 0.11, "vmt": 15.69, "pts": 0, "gw": false, "p5": true}, "Bedford": {"shi": 18.42, "vmt": 9.96, "pts": 0, "gw": false, "p5": false}, "Belchertown": {"shi": 6.0, "vmt": 13.28, "pts": 0, "gw": false, "p5": true}, "Bellingham": {"shi": 11.39, "vmt": 14.05, "pts": 0, "gw": false, "p5": true}, "Belmont": {"shi": 6.21, "vmt": 5.99, "pts": 4, "gw": false, "p5": true}, "Berkley": {"shi": 1.7, "vmt": 15.52, "pts": 0, "gw": false, "p5": true}, "Berlin": {"shi": 16.37, "vmt": 12.75, "pts": 0, "gw": false, "p5": false}, "Bernardston": {"shi": 2.31, "vmt": 10.43, "pts": 0, "gw": false, "p5": true}, "Beverly": {"shi": 11.36, "vmt": 8.03, "pts": 2, "gw": false, "p5": true}, "Billerica": {"shi": 10.94, "vmt": 10.22, "pts": 0, "gw": false, "p5": true}, "Blackstone": {"shi": 3.18, "vmt": 12.79, "pts": 0, "gw": false, "p5": true}, "Blandford": {"shi": 0.0, "vmt": 19.51, "pts": 0, "gw": false, "p5": true}, "Bolton": {"shi": 15.15, "vmt": 15.0, "pts": 0, "gw": false, "p5": false}, "Boston": {"shi": 21.54, "vmt": 3.75, "pts": 6, "gw": false, "p5": false}, "Bourne": {"shi": 7.05, "vmt": 18.31, "pts": 0, "gw": false, "p5": true}, "Boxborough": {"shi": 11.35, "vmt": 14.23, "pts": 0, "gw": false, "p5": true}, "Boxford": {"shi": 1.72, "vmt": 14.56, "pts": 0, "gw": false, "p5": true}, "Boylston": {"shi": 5.3, "vmt": 11.87, "pts": 0, "gw": false, "p5": true}, "Braintree": {"shi": 10.73, "vmt": 8.03, "pts": 2, "gw": false, "p5": true}, "Brewster": {"shi": 7.2, "vmt": 14.2, "pts": 0, "gw": false, "p5": true}, "Bridgewater": {"shi": 11.08, "vmt": 12.67, "pts": 0, "gw": false, "p5": true}, "Brimfield": {"shi": 3.52, "vmt": 19.13, "pts": 0, "gw": false, "p5": true}, "Brockton": {"shi": 12.1, "vmt": 9.22, "pts": 0, "gw": true, "p5": false}, "Brookfield": {"shi": 0.47, "vmt": 14.84, "pts": 0, "gw": false, "p5": true}, "Brookline": {"shi": 11.13, "vmt": 3.77, "pts": 6, "gw": false, "p5": true}, "Buckland": {"shi": 0.92, "vmt": 12.92, "pts": 0, "gw": false, "p5": true}, "Burlington": {"shi": 12.94, "vmt": 8.73, "pts": 2, "gw": false, "p5": false}, "Cambridge": {"shi": 12.88, "vmt": 2.82, "pts": 6, "gw": false, "p5": false}, "Canton": {"shi": 12.12, "vmt": 10.05, "pts": 0, "gw": false, "p5": false}, "Carlisle": {"shi": 3.17, "vmt": 9.54, "pts": 0, "gw": false, "p5": true}, "Carver": {"shi": 3.28, "vmt": 16.37, "pts": 0, "gw": false, "p5": true}, "Charlemont": {"shi": 0.52, "vmt": 19.39, "pts": 0, "gw": false, "p5": true}, "Charlton": {"shi": 1.74, "vmt": 16.06, "pts": 0, "gw": false, "p5": true}, "Chatham": {"shi": 4.73, "vmt": 12.25, "pts": 0, "gw": false, "p5": true}, "Chelmsford": {"shi": 10.02, "vmt": 11.52, "pts": 0, "gw": false, "p5": true}, "Chelsea": {"shi": 16.68, "vmt": 4.21, "pts": 6, "gw": true, "p5": false}, "Cheshire": {"shi": 0.0, "vmt": 9.97, "pts": 0, "gw": false, "p5": true}, "Chester": {"shi": 0.0, "vmt": 19.51, "pts": 0, "gw": false, "p5": true}, "Chesterfield": {"shi": 1.45, "vmt": 15.67, "pts": 0, "gw": false, "p5": true}, "Chicopee": {"shi": 10.46, "vmt": 7.23, "pts": 2, "gw": true, "p5": true}, "Chilmark": {"shi": 0.0, "vmt": 10.98, "pts": 0, "gw": false, "p5": true}, "Clarksburg": {"shi": 0.68, "vmt": 10.08, "pts": 0, "gw": false, "p5": true}, "Clinton": {"shi": 7.91, "vmt": 12.27, "pts": 0, "gw": false, "p5": true}, "Cohasset": {"shi": 10.38, "vmt": 10.9, "pts": 0, "gw": false, "p5": true}, "Colrain": {"shi": 0.0, "vmt": 19.39, "pts": 0, "gw": false, "p5": true}, "Concord": {"shi": 13.34, "vmt": 9.51, "pts": 0, "gw": false, "p5": false}, "Conway": {"shi": 0.13, "vmt": 16.39, "pts": 0, "gw": false, "p5": true}, "Cummington": {"shi": 3.27, "vmt": 19.79, "pts": 0, "gw": false, "p5": true}, "Dalton": {"shi": 5.62, "vmt": 8.06, "pts": 2, "gw": false, "p5": true}, "Danvers": {"shi": 10.06, "vmt": 8.89, "pts": 2, "gw": false, "p5": true}, "Dartmouth": {"shi": 7.81, "vmt": 12.65, "pts": 0, "gw": false, "p5": true}, "Dedham": {"shi": 10.89, "vmt": 7.67, "pts": 2, "gw": false, "p5": true}, "Deerfield": {"shi": 1.46, "vmt": 11.06, "pts": 0, "gw": false, "p5": true}, "Dennis": {"shi": 5.97, "vmt": 14.52, "pts": 0, "gw": false, "p5": true}, "Dighton": {"shi": 5.05, "vmt": 13.41, "pts": 0, "gw": false, "p5": true}, "Douglas": {"shi": 4.77, "vmt": 17.42, "pts": 0, "gw": false, "p5": true}, "Dover": {"shi": 2.82, "vmt": 10.6, "pts": 0, "gw": false, "p5": true}, "Dracut": {"shi": 5.91, "vmt": 11.49, "pts": 0, "gw": false, "p5": true}, "Dudley": {"shi": 2.35, "vmt": 14.1, "pts": 0, "gw": false, "p5": true}, "Dunstable": {"shi": 0.0, "vmt": 15.01, "pts": 0, "gw": false, "p5": true}, "Duxbury": {"shi": 6.58, "vmt": 15.06, "pts": 0, "gw": false, "p5": true}, "East Bridgewater": {"shi": 3.47, "vmt": 11.72, "pts": 0, "gw": false, "p5": true}, "East Brookfield": {"shi": 0.0, "vmt": 14.67, "pts": 0, "gw": false, "p5": true}, "East Longmeadow": {"shi": 7.0, "vmt": 9.99, "pts": 0, "gw": false, "p5": true}, "Eastham": {"shi": 3.68, "vmt": 14.87, "pts": 0, "gw": false, "p5": true}, "Easthampton": {"shi": 7.19, "vmt": 10.47, "pts": 0, "gw": false, "p5": true}, "Easton": {"shi": 9.84, "vmt": 12.97, "pts": 0, "gw": false, "p5": true}, "Edgartown": {"shi": 4.47, "vmt": 3.27, "pts": 6, "gw": false, "p5": true}, "Egremont": {"shi": 0.0, "vmt": 11.88, "pts": 0, "gw": false, "p5": true}, "Erving": {"shi": 0.0, "vmt": 16.26, "pts": 0, "gw": false, "p5": true}, "Essex": {"shi": 2.58, "vmt": 10.18, "pts": 0, "gw": false, "p5": true}, "Everett": {"shi": 5.38, "vmt": 4.86, "pts": 6, "gw": true, "p5": true}, "Fairhaven": {"shi": 6.91, "vmt": 10.04, "pts": 0, "gw": false, "p5": true}, "Fall River": {"shi": 10.14, "vmt": 9.53, "pts": 0, "gw": true, "p5": true}, "Falmouth": {"shi": 10.33, "vmt": 13.45, "pts": 0, "gw": false, "p5": true}, "Fitchburg": {"shi": 8.93, "vmt": 11.68, "pts": 0, "gw": true, "p5": true}, "Florida": {"shi": 0.0, "vmt": 16.49, "pts": 0, "gw": false, "p5": true}, "Foxborough": {"shi": 11.67, "vmt": 12.92, "pts": 0, "gw": false, "p5": true}, "Framingham": {"shi": 10.54, "vmt": 9.25, "pts": 0, "gw": false, "p5": true}, "Franklin": {"shi": 11.05, "vmt": 13.05, "pts": 0, "gw": false, "p5": true}, "Freetown": {"shi": 2.81, "vmt": 15.13, "pts": 0, "gw": false, "p5": true}, "Gardner": {"shi": 14.39, "vmt": 13.34, "pts": 0, "gw": false, "p5": false}, "Aquinnah": {"shi": 17.21, "vmt": 10.98, "pts": 0, "gw": false, "p5": false}, "Georgetown": {"shi": 11.11, "vmt": 15.96, "pts": 0, "gw": false, "p5": true}, "Gill": {"shi": 3.66, "vmt": 10.43, "pts": 0, "gw": false, "p5": true}, "Gloucester": {"shi": 8.04, "vmt": 9.91, "pts": 0, "gw": false, "p5": true}, "Goshen": {"shi": 2.26, "vmt": 13.77, "pts": 0, "gw": false, "p5": true}, "Gosnold": {"shi": 0.0, "vmt": 10.98, "pts": 0, "gw": false, "p5": true}, "Grafton": {"shi": 10.68, "vmt": 14.49, "pts": 0, "gw": false, "p5": true}, "Granby": {"shi": 3.09, "vmt": 10.78, "pts": 0, "gw": false, "p5": true}, "Granville": {"shi": 0.0, "vmt": 19.51, "pts": 0, "gw": false, "p5": true}, "Great Barrington": {"shi": 11.14, "vmt": 9.19, "pts": 0, "gw": false, "p5": true}, "Greenfield": {"shi": 14.77, "vmt": 9.31, "pts": 0, "gw": false, "p5": false}, "Groton": {"shi": 5.35, "vmt": 14.61, "pts": 0, "gw": false, "p5": true}, "Groveland": {"shi": 9.26, "vmt": 16.45, "pts": 0, "gw": false, "p5": true}, "Hadley": {"shi": 11.98, "vmt": 7.67, "pts": 2, "gw": false, "p5": true}, "Halifax": {"shi": 1.3, "vmt": 13.45, "pts": 0, "gw": false, "p5": true}, "Hamilton": {"shi": 4.07, "vmt": 11.29, "pts": 0, "gw": false, "p5": true}, "Hampden": {"shi": 2.99, "vmt": 11.21, "pts": 0, "gw": false, "p5": true}, "Hancock": {"shi": 0.0, "vmt": 13.03, "pts": 0, "gw": false, "p5": true}, "Hanover": {"shi": 10.94, "vmt": 12.73, "pts": 0, "gw": false, "p5": true}, "Hanson": {"shi": 4.95, "vmt": 12.56, "pts": 0, "gw": false, "p5": true}, "Hardwick": {"shi": 0.08, "vmt": 18.28, "pts": 0, "gw": false, "p5": true}, "Harvard": {"shi": 5.73, "vmt": 16.68, "pts": 0, "gw": false, "p5": true}, "Harwich": {"shi": 5.0, "vmt": 12.39, "pts": 0, "gw": false, "p5": true}, "Hatfield": {"shi": 2.9, "vmt": 9.38, "pts": 0, "gw": false, "p5": true}, "Haverhill": {"shi": 9.91, "vmt": 11.93, "pts": 0, "gw": true, "p5": true}, "Hawley": {"shi": 0.0, "vmt": 19.39, "pts": 0, "gw": false, "p5": true}, "Heath": {"shi": 0.0, "vmt": 19.39, "pts": 0, "gw": false, "p5": true}, "Hingham": {"shi": 10.33, "vmt": 9.48, "pts": 0, "gw": false, "p5": true}, "Hinsdale": {"shi": 0.0, "vmt": 10.08, "pts": 0, "gw": false, "p5": true}, "Holbrook": {"shi": 9.79, "vmt": 9.51, "pts": 0, "gw": false, "p5": true}, "Holden": {"shi": 5.69, "vmt": 13.7, "pts": 0, "gw": false, "p5": true}, "Holland": {"shi": 0.0, "vmt": 21.46, "pts": 0, "gw": false, "p5": true}, "Holliston": {"shi": 4.85, "vmt": 13.1, "pts": 0, "gw": false, "p5": true}, "Holyoke": {"shi": 19.44, "vmt": 7.1, "pts": 2, "gw": true, "p5": false}, "Hopedale": {"shi": 5.29, "vmt": 11.13, "pts": 0, "gw": false, "p5": true}, "Hopkinton": {"shi": 11.07, "vmt": 13.48, "pts": 0, "gw": false, "p5": true}, "Hubbardston": {"shi": 3.11, "vmt": 17.6, "pts": 0, "gw": false, "p5": true}, "Hudson": {"shi": 11.12, "vmt": 11.85, "pts": 0, "gw": false, "p5": true}, "Hull": {"shi": 1.66, "vmt": 12.52, "pts": 0, "gw": false, "p5": true}, "Huntington": {"shi": 3.2, "vmt": 14.49, "pts": 0, "gw": false, "p5": true}, "Ipswich": {"shi": 9.17, "vmt": 12.98, "pts": 0, "gw": false, "p5": true}, "Kingston": {"shi": 5.18, "vmt": 14.32, "pts": 0, "gw": false, "p5": true}, "Lakeville": {"shi": 11.02, "vmt": 16.6, "pts": 0, "gw": false, "p5": true}, "Lancaster": {"shi": 6.91, "vmt": 14.92, "pts": 0, "gw": false, "p5": true}, "Lanesborough": {"shi": 1.97, "vmt": 9.57, "pts": 0, "gw": false, "p5": true}, "Lawrence": {"shi": 13.26, "vmt": 8.36, "pts": 2, "gw": true, "p5": false}, "Lee": {"shi": 8.3, "vmt": 7.68, "pts": 2, "gw": false, "p5": true}, "Leicester": {"shi": 3.9, "vmt": 11.72, "pts": 0, "gw": false, "p5": true}, "Lenox": {"shi": 6.51, "vmt": 9.5, "pts": 0, "gw": false, "p5": true}, "Leominster": {"shi": 7.35, "vmt": 11.92, "pts": 0, "gw": true, "p5": true}, "Leverett": {"shi": 0.25, "vmt": 16.59, "pts": 0, "gw": false, "p5": true}, "Lexington": {"shi": 11.07, "vmt": 8.28, "pts": 2, "gw": false, "p5": true}, "Leyden": {"shi": 0.0, "vmt": 10.43, "pts": 0, "gw": false, "p5": true}, "Lincoln": {"shi": 12.83, "vmt": 9.53, "pts": 0, "gw": false, "p5": false}, "Littleton": {"shi": 11.81, "vmt": 13.56, "pts": 0, "gw": false, "p5": true}, "Longmeadow": {"shi": 4.86, "vmt": 10.06, "pts": 0, "gw": false, "p5": true}, "Lowell": {"shi": 11.89, "vmt": 9.52, "pts": 0, "gw": true, "p5": true}, "Ludlow": {"shi": 4.61, "vmt": 9.51, "pts": 0, "gw": false, "p5": true}, "Lunenburg": {"shi": 8.21, "vmt": 14.4, "pts": 0, "gw": false, "p5": true}, "Lynn": {"shi": 11.74, "vmt": 6.71, "pts": 4, "gw": true, "p5": true}, "Lynnfield": {"shi": 11.87, "vmt": 9.82, "pts": 0, "gw": false, "p5": true}, "Malden": {"shi": 9.33, "vmt": 5.84, "pts": 4, "gw": true, "p5": true}, "Manchester-By-The-Sea": {"shi": 5.02, "vmt": 11.51, "pts": 0, "gw": false, "p5": true}, "Mansfield": {"shi": 10.43, "vmt": 12.69, "pts": 0, "gw": false, "p5": true}, "Marblehead": {"shi": 3.84, "vmt": 9.56, "pts": 0, "gw": false, "p5": true}, "Marion": {"shi": 7.25, "vmt": 18.64, "pts": 0, "gw": false, "p5": true}, "Marlborough": {"shi": 10.83, "vmt": 11.4, "pts": 0, "gw": false, "p5": true}, "Marshfield": {"shi": 10.31, "vmt": 16.79, "pts": 0, "gw": false, "p5": true}, "Mashpee": {"shi": 5.18, "vmt": 14.07, "pts": 0, "gw": false, "p5": true}, "Mattapoisett": {"shi": 2.43, "vmt": 13.91, "pts": 0, "gw": false, "p5": true}, "Maynard": {"shi": 9.98, "vmt": 11.02, "pts": 0, "gw": false, "p5": true}, "Medfield": {"shi": 9.45, "vmt": 11.26, "pts": 0, "gw": false, "p5": true}, "Medford": {"shi": 9.49, "vmt": 5.93, "pts": 4, "gw": false, "p5": true}, "Medway": {"shi": 11.62, "vmt": 14.51, "pts": 0, "gw": false, "p5": true}, "Melrose": {"shi": 9.05, "vmt": 6.57, "pts": 4, "gw": false, "p5": true}, "Mendon": {"shi": 1.81, "vmt": 15.85, "pts": 0, "gw": false, "p5": true}, "Merrimac": {"shi": 5.46, "vmt": 14.66, "pts": 0, "gw": false, "p5": true}, "Methuen": {"shi": 9.75, "vmt": 11.23, "pts": 0, "gw": true, "p5": true}, "Middleborough": {"shi": 9.75, "vmt": 14.75, "pts": 0, "gw": false, "p5": true}, "Middlefield": {"shi": 0.0, "vmt": 19.79, "pts": 0, "gw": false, "p5": true}, "Middleton": {"shi": 6.91, "vmt": 11.33, "pts": 0, "gw": false, "p5": true}, "Milford": {"shi": 11.68, "vmt": 11.19, "pts": 0, "gw": false, "p5": true}, "Millbury": {"shi": 3.75, "vmt": 11.15, "pts": 0, "gw": false, "p5": true}, "Millis": {"shi": 5.71, "vmt": 13.61, "pts": 0, "gw": false, "p5": true}, "Millville": {"shi": 2.02, "vmt": 14.69, "pts": 0, "gw": false, "p5": true}, "Milton": {"shi": 7.38, "vmt": 7.39, "pts": 2, "gw": false, "p5": true}, "Monroe": {"shi": 0.0, "vmt": 19.39, "pts": 0, "gw": false, "p5": true}, "Monson": {"shi": 3.4, "vmt": 14.61, "pts": 0, "gw": false, "p5": true}, "Montague": {"shi": 9.18, "vmt": 11.3, "pts": 0, "gw": false, "p5": true}, "Monterey": {"shi": 0.0, "vmt": 11.87, "pts": 0, "gw": false, "p5": true}, "Montgomery": {"shi": 0.0, "vmt": 19.51, "pts": 0, "gw": false, "p5": true}, "Mount Washington": {"shi": 0.0, "vmt": 11.88, "pts": 0, "gw": false, "p5": true}, "Nahant": {"shi": 2.98, "vmt": 9.01, "pts": 0, "gw": false, "p5": true}, "Nantucket": {"shi": 6.55, "vmt": 2.14, "pts": 6, "gw": false, "p5": true}, "Natick": {"shi": 10.2, "vmt": 9.05, "pts": 0, "gw": false, "p5": true}, "Needham": {"shi": 11.85, "vmt": 8.19, "pts": 2, "gw": false, "p5": true}, "New Ashford": {"shi": 0.0, "vmt": 13.03, "pts": 0, "gw": false, "p5": true}, "New Bedford": {"shi": 11.8, "vmt": 10.15, "pts": 0, "gw": true, "p5": true}, "New Braintree": {"shi": 0.0, "vmt": 18.28, "pts": 0, "gw": false, "p5": true}, "New Marlborough": {"shi": 0.0, "vmt": 10.47, "pts": 0, "gw": false, "p5": true}, "New Salem": {"shi": 0.0, "vmt": 16.59, "pts": 0, "gw": false, "p5": true}, "Newbury": {"shi": 3.45, "vmt": 15.62, "pts": 0, "gw": false, "p5": true}, "Newburyport": {"shi": 9.43, "vmt": 13.99, "pts": 0, "gw": false, "p5": true}, "Newton": {"shi": 10.68, "vmt": 7.02, "pts": 2, "gw": false, "p5": true}, "Norfolk": {"shi": 4.96, "vmt": 12.01, "pts": 0, "gw": false, "p5": true}, "North Adams": {"shi": 12.24, "vmt": 7.89, "pts": 2, "gw": false, "p5": false}, "North Andover": {"shi": 8.07, "vmt": 12.97, "pts": 0, "gw": false, "p5": true}, "North Attleborough": {"shi": 3.04, "vmt": 13.93, "pts": 0, "gw": false, "p5": true}, "North Brookfield": {"shi": 6.82, "vmt": 14.27, "pts": 0, "gw": false, "p5": true}, "North Reading": {"shi": 9.47, "vmt": 11.08, "pts": 0, "gw": false, "p5": true}, "Northampton": {"shi": 10.73, "vmt": 9.04, "pts": 0, "gw": false, "p5": true}, "Northborough": {"shi": 10.44, "vmt": 12.46, "pts": 0, "gw": false, "p5": true}, "Northbridge": {"shi": 6.78, "vmt": 12.42, "pts": 0, "gw": false, "p5": true}, "Northfield": {"shi": 2.06, "vmt": 17.31, "pts": 0, "gw": false, "p5": true}, "Norton": {"shi": 10.02, "vmt": 13.34, "pts": 0, "gw": false, "p5": true}, "Norwell": {"shi": 6.64, "vmt": 12.56, "pts": 0, "gw": false, "p5": true}, "Norwood": {"shi": 8.94, "vmt": 8.62, "pts": 2, "gw": false, "p5": true}, "Oak Bluffs": {"shi": 7.07, "vmt": 5.21, "pts": 4, "gw": false, "p5": true}, "Oakham": {"shi": 0.0, "vmt": 18.03, "pts": 0, "gw": false, "p5": true}, "Orange": {"shi": 11.97, "vmt": 13.38, "pts": 0, "gw": false, "p5": true}, "Orleans": {"shi": 11.09, "vmt": 13.11, "pts": 0, "gw": false, "p5": true}, "Otis": {"shi": 0.0, "vmt": 17.9, "pts": 0, "gw": false, "p5": true}, "Oxford": {"shi": 7.21, "vmt": 13.43, "pts": 0, "gw": false, "p5": true}, "Palmer": {"shi": 4.51, "vmt": 12.23, "pts": 0, "gw": false, "p5": true}, "Paxton": {"shi": 4.95, "vmt": 12.01, "pts": 0, "gw": false, "p5": true}, "Peabody": {"shi": 10.61, "vmt": 8.34, "pts": 2, "gw": true, "p5": true}, "Pelham": {"shi": 1.05, "vmt": 10.29, "pts": 0, "gw": false, "p5": true}, "Pembroke": {"shi": 8.78, "vmt": 13.44, "pts": 0, "gw": false, "p5": true}, "Pepperell": {"shi": 2.83, "vmt": 15.45, "pts": 0, "gw": false, "p5": true}, "Peru": {"shi": 0.0, "vmt": 16.15, "pts": 0, "gw": false, "p5": true}, "Petersham": {"shi": 0.0, "vmt": 21.56, "pts": 0, "gw": false, "p5": true}, "Phillipston": {"shi": 1.44, "vmt": 21.56, "pts": 0, "gw": false, "p5": true}, "Pittsfield": {"shi": 8.53, "vmt": 5.82, "pts": 4, "gw": true, "p5": true}, "Plainfield": {"shi": 0.0, "vmt": 19.79, "pts": 0, "gw": false, "p5": true}, "Plainville": {"shi": 13.31, "vmt": 13.24, "pts": 0, "gw": false, "p5": false}, "Plymouth": {"shi": 8.4, "vmt": 16.9, "pts": 0, "gw": false, "p5": true}, "Plympton": {"shi": 4.99, "vmt": 14.8, "pts": 0, "gw": false, "p5": true}, "Princeton": {"shi": 1.89, "vmt": 15.16, "pts": 0, "gw": false, "p5": true}, "Provincetown": {"shi": 8.03, "vmt": 8.1, "pts": 2, "gw": false, "p5": true}, "Quincy": {"shi": 9.02, "vmt": 6.27, "pts": 4, "gw": true, "p5": true}, "Randolph": {"shi": 10.38, "vmt": 8.36, "pts": 2, "gw": false, "p5": true}, "Raynham": {"shi": 15.31, "vmt": 15.03, "pts": 0, "gw": false, "p5": false}, "Reading": {"shi": 9.8, "vmt": 9.38, "pts": 0, "gw": false, "p5": true}, "Rehoboth": {"shi": 1.15, "vmt": 12.71, "pts": 0, "gw": false, "p5": true}, "Revere": {"shi": 7.08, "vmt": 5.21, "pts": 4, "gw": true, "p5": true}, "Richmond": {"shi": 0.6, "vmt": 13.03, "pts": 0, "gw": false, "p5": true}, "Rochester": {"shi": 0.58, "vmt": 18.18, "pts": 0, "gw": false, "p5": true}, "Rockland": {"shi": 9.96, "vmt": 10.38, "pts": 0, "gw": false, "p5": true}, "Rockport": {"shi": 5.39, "vmt": 12.16, "pts": 0, "gw": false, "p5": true}, "Rowe": {"shi": 0.0, "vmt": 19.39, "pts": 0, "gw": false, "p5": true}, "Rowley": {"shi": 3.98, "vmt": 14.94, "pts": 0, "gw": false, "p5": true}, "Royalston": {"shi": 0.54, "vmt": 20.61, "pts": 0, "gw": false, "p5": true}, "Russell": {"shi": 0.72, "vmt": 19.51, "pts": 0, "gw": false, "p5": true}, "Rutland": {"shi": 2.75, "vmt": 14.16, "pts": 0, "gw": false, "p5": true}, "Salem": {"shi": 10.6, "vmt": 6.72, "pts": 4, "gw": true, "p5": true}, "Salisbury": {"shi": 8.65, "vmt": 13.28, "pts": 0, "gw": false, "p5": true}, "Sandisfield": {"shi": 0.0, "vmt": 17.9, "pts": 0, "gw": false, "p5": true}, "Sandwich": {"shi": 4.34, "vmt": 14.74, "pts": 0, "gw": false, "p5": true}, "Saugus": {"shi": 11.22, "vmt": 8.17, "pts": 2, "gw": false, "p5": true}, "Savoy": {"shi": 0.0, "vmt": 16.49, "pts": 0, "gw": false, "p5": true}, "Scituate": {"shi": 6.08, "vmt": 13.04, "pts": 0, "gw": false, "p5": true}, "Seekonk": {"shi": 1.45, "vmt": 10.41, "pts": 0, "gw": false, "p5": true}, "Sharon": {"shi": 10.71, "vmt": 11.24, "pts": 0, "gw": false, "p5": true}, "Sheffield": {"shi": 1.9, "vmt": 8.74, "pts": 2, "gw": false, "p5": true}, "Shelburne": {"shi": 4.77, "vmt": 12.92, "pts": 0, "gw": false, "p5": true}, "Sherborn": {"shi": 3.17, "vmt": 12.19, "pts": 0, "gw": false, "p5": true}, "Shirley": {"shi": 4.13, "vmt": 13.96, "pts": 0, "gw": false, "p5": true}, "Shrewsbury": {"shi": 7.4, "vmt": 12.11, "pts": 0, "gw": false, "p5": true}, "Shutesbury": {"shi": 0.52, "vmt": 16.59, "pts": 0, "gw": false, "p5": true}, "Somerset": {"shi": 3.69, "vmt": 12.28, "pts": 0, "gw": false, "p5": true}, "Somerville": {"shi": 8.93, "vmt": 4.05, "pts": 6, "gw": false, "p5": true}, "South Hadley": {"shi": 5.86, "vmt": 9.65, "pts": 0, "gw": false, "p5": true}, "Southampton": {"shi": 2.22, "vmt": 10.36, "pts": 0, "gw": false, "p5": true}, "Southborough": {"shi": 9.94, "vmt": 12.34, "pts": 0, "gw": false, "p5": true}, "Southbridge": {"shi": 6.47, "vmt": 10.59, "pts": 0, "gw": false, "p5": true}, "Southwick": {"shi": 3.49, "vmt": 13.11, "pts": 0, "gw": false, "p5": true}, "Spencer": {"shi": 5.86, "vmt": 14.6, "pts": 0, "gw": false, "p5": true}, "Springfield": {"shi": 16.54, "vmt": 6.72, "pts": 4, "gw": true, "p5": false}, "Sterling": {"shi": 7.26, "vmt": 16.18, "pts": 0, "gw": false, "p5": true}, "Stockbridge": {"shi": 11.68, "vmt": 9.13, "pts": 0, "gw": false, "p5": true}, "Stoneham": {"shi": 11.59, "vmt": 7.97, "pts": 2, "gw": false, "p5": true}, "Stoughton": {"shi": 11.33, "vmt": 9.96, "pts": 0, "gw": false, "p5": true}, "Stow": {"shi": 11.41, "vmt": 12.66, "pts": 0, "gw": false, "p5": true}, "Sturbridge": {"shi": 5.47, "vmt": 17.88, "pts": 0, "gw": false, "p5": true}, "Sudbury": {"shi": 11.88, "vmt": 11.94, "pts": 0, "gw": false, "p5": true}, "Sunderland": {"shi": 10.33, "vmt": 10.86, "pts": 0, "gw": false, "p5": true}, "Sutton": {"shi": 1.61, "vmt": 13.63, "pts": 0, "gw": false, "p5": true}, "Swampscott": {"shi": 4.07, "vmt": 7.75, "pts": 2, "gw": false, "p5": true}, "Swansea": {"shi": 3.89, "vmt": 11.25, "pts": 0, "gw": false, "p5": true}, "Taunton": {"shi": 7.0, "vmt": 11.97, "pts": 0, "gw": true, "p5": true}, "Templeton": {"shi": 6.93, "vmt": 15.17, "pts": 0, "gw": false, "p5": true}, "Tewksbury": {"shi": 10.28, "vmt": 11.68, "pts": 0, "gw": false, "p5": true}, "Tisbury": {"shi": 5.81, "vmt": 0.87, "pts": 6, "gw": false, "p5": true}, "Tolland": {"shi": 0.0, "vmt": 19.51, "pts": 0, "gw": false, "p5": true}, "Topsfield": {"shi": 8.85, "vmt": 11.85, "pts": 0, "gw": false, "p5": true}, "Townsend": {"shi": 4.09, "vmt": 18.02, "pts": 0, "gw": false, "p5": true}, "Truro": {"shi": 5.25, "vmt": 14.49, "pts": 0, "gw": false, "p5": true}, "Tyngsborough": {"shi": 10.82, "vmt": 13.39, "pts": 0, "gw": false, "p5": true}, "Tyringham": {"shi": 0.0, "vmt": 11.87, "pts": 0, "gw": false, "p5": true}, "Upton": {"shi": 8.73, "vmt": 14.39, "pts": 0, "gw": false, "p5": true}, "Uxbridge": {"shi": 4.58, "vmt": 14.71, "pts": 0, "gw": false, "p5": true}, "Wakefield": {"shi": 8.92, "vmt": 8.23, "pts": 2, "gw": false, "p5": true}, "Wales": {"shi": 2.48, "vmt": 21.46, "pts": 0, "gw": false, "p5": true}, "Walpole": {"shi": 10.89, "vmt": 10.77, "pts": 0, "gw": false, "p5": true}, "Waltham": {"shi": 9.76, "vmt": 6.31, "pts": 4, "gw": false, "p5": true}, "Ware": {"shi": 7.76, "vmt": 14.51, "pts": 0, "gw": false, "p5": true}, "Wareham": {"shi": 9.0, "vmt": 16.99, "pts": 0, "gw": false, "p5": true}, "Warren": {"shi": 3.38, "vmt": 15.83, "pts": 0, "gw": false, "p5": true}, "Warwick": {"shi": 0.0, "vmt": 16.26, "pts": 0, "gw": false, "p5": true}, "Washington": {"shi": 0.0, "vmt": 15.69, "pts": 0, "gw": false, "p5": true}, "Watertown": {"shi": 7.46, "vmt": 5.97, "pts": 4, "gw": false, "p5": true}, "Wayland": {"shi": 10.2, "vmt": 10.01, "pts": 0, "gw": false, "p5": true}, "Webster": {"shi": 8.02, "vmt": 14.5, "pts": 0, "gw": false, "p5": true}, "Wellesley": {"shi": 10.95, "vmt": 7.57, "pts": 2, "gw": false, "p5": true}, "Wellfleet": {"shi": 2.18, "vmt": 11.47, "pts": 0, "gw": false, "p5": true}, "Wendell": {"shi": 1.14, "vmt": 16.26, "pts": 0, "gw": false, "p5": true}, "Wenham": {"shi": 12.35, "vmt": 7.69, "pts": 2, "gw": false, "p5": false}, "West Boylston": {"shi": 10.13, "vmt": 9.96, "pts": 0, "gw": false, "p5": true}, "West Bridgewater": {"shi": 4.3, "vmt": 10.59, "pts": 0, "gw": false, "p5": true}, "West Brookfield": {"shi": 4.12, "vmt": 18.46, "pts": 0, "gw": false, "p5": true}, "West Newbury": {"shi": 2.49, "vmt": 16.17, "pts": 0, "gw": false, "p5": true}, "West Springfield": {"shi": 3.52, "vmt": 7.74, "pts": 2, "gw": false, "p5": true}, "West Stockbridge": {"shi": 0.0, "vmt": 10.68, "pts": 0, "gw": false, "p5": true}, "West Tisbury": {"shi": 1.54, "vmt": 10.98, "pts": 0, "gw": false, "p5": true}, "Westborough": {"shi": 11.8, "vmt": 12.34, "pts": 0, "gw": false, "p5": true}, "Westfield": {"shi": 7.02, "vmt": 10.12, "pts": 0, "gw": true, "p5": true}, "Westford": {"shi": 12.23, "vmt": 13.34, "pts": 0, "gw": false, "p5": false}, "Westhampton": {"shi": 2.5, "vmt": 13.1, "pts": 0, "gw": false, "p5": true}, "Westminster": {"shi": 4.31, "vmt": 15.08, "pts": 0, "gw": false, "p5": true}, "Weston": {"shi": 8.5, "vmt": 10.29, "pts": 0, "gw": false, "p5": true}, "Westport": {"shi": 4.17, "vmt": 13.18, "pts": 0, "gw": false, "p5": true}, "Westwood": {"shi": 10.75, "vmt": 9.79, "pts": 0, "gw": false, "p5": true}, "Weymouth": {"shi": 6.98, "vmt": 8.7, "pts": 2, "gw": false, "p5": true}, "Whately": {"shi": 1.26, "vmt": 10.86, "pts": 0, "gw": false, "p5": true}, "Whitman": {"shi": 3.48, "vmt": 10.8, "pts": 0, "gw": false, "p5": true}, "Wilbraham": {"shi": 5.62, "vmt": 11.27, "pts": 0, "gw": false, "p5": true}, "Williamsburg": {"shi": 5.0, "vmt": 13.77, "pts": 0, "gw": false, "p5": true}, "Williamstown": {"shi": 9.12, "vmt": 7.87, "pts": 2, "gw": false, "p5": true}, "Wilmington": {"shi": 10.71, "vmt": 9.94, "pts": 0, "gw": false, "p5": true}, "Winchendon": {"shi": 7.68, "vmt": 19.09, "pts": 0, "gw": false, "p5": true}, "Winchester": {"shi": 4.89, "vmt": 7.3, "pts": 2, "gw": false, "p5": true}, "Windsor": {"shi": 0.0, "vmt": 16.15, "pts": 0, "gw": false, "p5": true}, "Winthrop": {"shi": 5.53, "vmt": 6.16, "pts": 4, "gw": false, "p5": true}, "Woburn": {"shi": 10.72, "vmt": 7.75, "pts": 2, "gw": false, "p5": true}, "Worcester": {"shi": 12.34, "vmt": 8.65, "pts": 2, "gw": true, "p5": false}, "Worthington": {"shi": 3.81, "vmt": 19.79, "pts": 0, "gw": false, "p5": true}, "Wrentham": {"shi": 11.74, "vmt": 13.51, "pts": 0, "gw": false, "p5": true}, "Yarmouth": {"shi": 4.93, "vmt": 11.22, "pts": 0, "gw": false, "p5": true}};
+const RI_DATA = {"Barrington": {"cat": "Continued Growth", "met": false, "pct": 3.7, "pts": 5, "cond": true}, "Burrillville": {"cat": "Continued Growth", "met": true, "pct": 10.19, "pts": 5, "cond": true}, "Charlestown": {"cat": "Continued Growth", "met": false, "pct": 3.96, "pts": 5, "cond": true}, "East Greenwich": {"cat": "Continued Growth", "met": false, "pct": 8.29, "pts": 5, "cond": true}, "Exeter": {"cat": "Continued Growth", "met": false, "pct": 7.59, "pts": 5, "cond": true}, "Foster": {"cat": "Continued Growth", "met": false, "pct": 2.2, "pts": 5, "cond": true}, "Glocester": {"cat": "Continued Growth", "met": false, "pct": 2.54, "pts": 5, "cond": true}, "Hopkinton": {"cat": "Continued Growth", "met": false, "pct": 7.19, "pts": 5, "cond": true}, "Jamestown": {"cat": "Continued Growth", "met": false, "pct": 4.73, "pts": 5, "cond": true}, "Little Compton": {"cat": "Continued Growth", "met": false, "pct": 0.65, "pts": 5, "cond": true}, "Middletown": {"cat": "Continued Growth", "met": false, "pct": 6.74, "pts": 5, "cond": true}, "Narragansett": {"cat": "Continued Growth", "met": false, "pct": 4.64, "pts": 5, "cond": true}, "New Shoreham": {"cat": "Continued Growth", "met": false, "pct": 7.4, "pts": 5, "cond": true}, "North Smithfield": {"cat": "Continued Growth", "met": false, "pct": 8.2, "pts": 5, "cond": true}, "Portsmouth": {"cat": "Continued Growth", "met": false, "pct": 3.34, "pts": 5, "cond": true}, "Richmond": {"cat": "Continued Growth", "met": false, "pct": 3.52, "pts": 5, "cond": true}, "Scituate": {"cat": "Continued Growth", "met": false, "pct": 1.27, "pts": 5, "cond": true}, "Tiverton": {"cat": "Continued Growth", "met": false, "pct": 6.05, "pts": 5, "cond": true}, "Warren": {"cat": "Continued Growth", "met": false, "pct": 6.55, "pts": 5, "cond": true}, "West Greenwich": {"cat": "Continued Growth", "met": false, "pct": 1.77, "pts": 5, "cond": true}, "Bristol": {"cat": "Modest Growth", "met": false, "pct": 6.74, "pts": 10, "cond": false}, "Coventry": {"cat": "Modest Growth", "met": false, "pct": 6.23, "pts": 10, "cond": false}, "Cumberland": {"cat": "Modest Growth", "met": false, "pct": 6.54, "pts": 10, "cond": false}, "Johnston": {"cat": "Modest Growth", "met": false, "pct": 9.01, "pts": 10, "cond": false}, "Lincoln": {"cat": "Modest Growth", "met": false, "pct": 8.35, "pts": 10, "cond": false}, "North Providence": {"cat": "Modest Growth", "met": false, "pct": 7.99, "pts": 10, "cond": false}, "Smithfield": {"cat": "Modest Growth", "met": false, "pct": 5.89, "pts": 10, "cond": false}, "South Kingstown": {"cat": "Modest Growth", "met": false, "pct": 5.54, "pts": 10, "cond": false}, "West Warwick": {"cat": "Modest Growth", "met": true, "pct": 10.25, "pts": 7, "cond": false}, "Westerly": {"cat": "Modest Growth", "met": false, "pct": 6.24, "pts": 10, "cond": false}, "Woonsocket": {"cat": "Modest Growth", "met": true, "pct": 16.82, "pts": 7, "cond": false}, "Central Falls": {"cat": "Strategic Growth", "met": true, "pct": 16.08, "pts": 7, "cond": false}, "Cranston": {"cat": "Strategic Growth", "met": false, "pct": 6.14, "pts": 10, "cond": false}, "East Providence": {"cat": "Strategic Growth", "met": true, "pct": 10.68, "pts": 7, "cond": false}, "Newport": {"cat": "Strategic Growth", "met": true, "pct": 16.31, "pts": 7, "cond": false}, "North Kingstown": {"cat": "Strategic Growth", "met": false, "pct": 8.82, "pts": 10, "cond": false}, "Pawtucket": {"cat": "Strategic Growth", "met": true, "pct": 10.08, "pts": 7, "cond": false}, "Providence": {"cat": "Strategic Growth", "met": true, "pct": 16.67, "pts": 7, "cond": false}, "Warwick": {"cat": "Strategic Growth", "met": false, "pct": 5.81, "pts": 10, "cond": false}};
+
+const STATES = {
+  CT: {
+    label:"Connecticut", center:[41.6,-72.7],
+    vintage:"CHFA 2027–2028 Housing Needs &amp; Location Guideline (public-hearing draft)",
+    src:{kind:"geojson", url:"https://cdn.jsdelivr.net/gh/HandsOnDataViz/ct-boundaries@main/ct-towns-2022-simple-datactgov.geojson"},
+    nameOf:p=>{for(const k of ["TOWN","town","NAME","name","Town","TOWN_NAME","town_name","NAME10","NAMELSAD"]) if(p&&p[k]) return String(p[k]).replace(/ (town|city)$/i,"").trim(); return "";},
+    lookup:n=>CT_DATA[n]?{name:n,d:CT_DATA[n]}:null,
+    list:()=>Object.keys(CT_DATA).sort(),
+    columns:["Town","HNI","AHA","Total"],
+    row:n=>{const d=CT_DATA[n];return [n,d[0],d[1],"<b>"+d[2]+"</b>"];},
+    color:n=>{const d=CT_DATA[n]; if(!d) return "#6e7480";
+      return d[2]>=9?"#3aa655":d[2]>=7?"#e3c22b":d[2]>=5?"#3d7fc1":"#6e7480";},
+    tooltip:n=>{const d=CT_DATA[n]; if(!d) return "<b>"+n+"</b>";
+      return `<b>${n}</b><br>Housing Needs quintile: ${d[0]}<br>Appeals List points: ${d[1]}<br><b>Total: ${d[2]} / 10</b>`;},
+    legend:{title:"Total QAP points",
+      rows:[["#3aa655","9–10"],["#e3c22b","7–8"],["#3d7fc1","5–6"],["#6e7480","1–4"]],
+      denom:"Out of 10 — this is the entire town-level Housing Needs &amp; Location score."},
+    // address screening: score does not vary within a town
+    score:(n,util)=>{const d=CT_DATA[n]; if(!d) return null;
+      return {pts:d[2]+" / 10",
+        color:d[2]>=9?"#3aa655":d[2]>=7?"#e3c22b":d[2]>=5?"#3d7fc1":"#6e7480",
+        rows:[["Housing Needs quintile",d[0]],["Appeals List points",d[1]]],
+        note:"Town-wide score — identical for every address in this town. Sewer and water are site-specific and shown for diligence only; neither affects the CT score."};},
+    utils:[
+      {id:"ct_sewer", label:"CT sewer service (DEEP)", color:"#00d8b4",
+       url:"https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Connected_Sewer_Service_Areas/FeatureServer/0"},
+      {id:"ct_water", label:"CT water ESA (DPH/WUCC)", color:"#c77dff",
+       url:"https://maps.ct.gov/arcgis/rest/services/Hosted/Exclusive_Service_Areas/FeatureServer/1"}
+    ],
+    screenUtils:{water:"ct_water", sewer:"ct_sewer"},
+    sources:'Boundaries <a href="https://github.com/HandsOnDataViz/ct-boundaries" target="_blank">ct-boundaries</a> · Scores <a href="https://www.chfa.org/assets/1/19/!2027-2028_Housing_Needs__Location_Guideline_publish.pdf" target="_blank">CHFA 2027–28</a> · <a href="https://geodata.ct.gov/datasets/CTDEEP::connected-sewer-service-areas/about" target="_blank">DEEP sewer</a>'
+  },
+
+  RI: {
+    label:"Rhode Island", center:[41.68,-71.55],
+    vintage:"2026 QAP · Final 2025 LMIH chart · Housing 2030 (adopted Dec 2025)",
+    src:{kind:"geojson", url:"https://services2.arcgis.com/S8zZg9pg23JUEexQ/arcgis/rest/services/BND_Municipalities_1997_spf/FeatureServer/0/query?where=LAND%3D%27Y%27&outFields=NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0004&geometryPrecision=5&f=geojson"},
+    nameOf:p=>String((p&&(p.NAME||p.name))||"").trim(),
+    lookup:n=>{const k=Object.keys(RI_DATA).find(x=>x.toUpperCase()===String(n).toUpperCase());
+               return k?{name:k,d:RI_DATA[k]}:null;},
+    list:()=>Object.keys(RI_DATA).sort(),
+    columns:["Municipality","Growth category","Pts"],
+    row:n=>{const d=RI_DATA[n];return [n,d.cat,"<b>"+d.pts+(d.cond?"*":"")+"</b>"];},
+    color:function(n){const r=this.lookup(n); if(!r) return "#6e7480";
+      return {10:"#3aa655",7:"#e3c22b",5:"#3d7fc1",0:"#6e7480"}[r.d.pts];},
+    tooltip:function(n){const r=this.lookup(n); if(!r) return "<b>"+n+"</b>"; const d=r.d;
+      const p=d.cond?"5 <i>(only if the site has public water)</i>":d.pts;
+      return `<b>${r.name}</b><br>${d.cat}<br>LMIH ${d.pct.toFixed(2)}% — 10% goal ${d.met?"met":"not met"}<br><b>Criterion A: ${p} pts</b>`;},
+    legend:{title:"Criterion A points",
+      rows:[["#3aa655","10 — under 10% + Modest/Strategic"],["#e3c22b","7 — met 10% + Modest/Strategic"],
+            ["#3d7fc1","5 — Continued Growth, if public water"],["#6e7480","0"]],
+      denom:"Out of 147 total QAP points — about 7% of the application."},
+    score:function(n,util){const r=this.lookup(n); if(!r) return null; const d=r.d;
+      if(d.cond){
+        const w=util.ri_wservice;
+        if(!w||!w.ok) return {pts:"5 or 0 — undetermined", color:"#ffb4a2",
+          rows:[["Growth category",d.cat],["LMIH",d.pct.toFixed(2)+"% — "+(d.met?"met":"not met")]],
+          note:"Continued Growth community: the 5-point tier depends on public water at this site, and the water service query did not return."};
+        const has=w.features.length>0;
+        return {pts:(has?5:0)+" pts", color:has?"#3d7fc1":"#6e7480",
+          rows:[["Growth category",d.cat],["LMIH",d.pct.toFixed(2)+"% — "+(d.met?"met":"not met")]],
+          note:has?"Continued Growth with public water at this point — earns the 5-point tier."
+                  :"Continued Growth, and this point is outside a water district service area — earns 0."};
+      }
+      return {pts:d.pts+" pts", color:d.pts===10?"#3aa655":"#e3c22b",
+        rows:[["Growth category",d.cat],["LMIH",d.pct.toFixed(2)+"% — "+(d.met?"met":"not met")]],
+        note:d.pts===10?"Under the 10% goal in a Modest/Strategic Growth community."
+                       :"Municipality has met the 10% goal, so the 7-point tier applies."};},
+    utils:[
+      {id:"ri_sewer",     label:"RI sewered area (RIDEM)", color:"#00d8b4",
+       url:"https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/FeatureServer/20"},
+      {id:"ri_wservice",  label:"RI water — service area", color:"#5aa9ff",
+       url:"https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/FeatureServer/16"},
+      {id:"ri_wjuris",    label:"RI water — jurisdictional", color:"#c77dff",
+       url:"https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/FeatureServer/15"},
+      {id:"ri_usb",       label:"Urban Services Boundary", color:"#ffd166",
+       url:"https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/FeatureServer/19"}
+    ],
+    screenUtils:{water:"ri_wservice", sewer:"ri_sewer"},
+    sources:'Boundaries <a href="https://www.rigis.org/datasets/edc::municipalities-1997/about" target="_blank">RIGIS</a> · <a href="https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/MapServer" target="_blank">RIDEM utilities</a>'
+  }
+
+  ,MA: {
+    label:"Massachusetts", center:[42.3,-71.8],
+    vintage:"2025–2026 EOHLC QAP · SHI as of 9/30/2025 · EOHLC Job Accessibility chart",
+    src:{kind:"geojson", url:"https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Municipalities_Hosted/FeatureServer/0/query?where=1%3D1&outFields=TOWN&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0004&geometryPrecision=5&f=geojson"},
+    nameOf:p=>String((p&&(p.TOWN||p.NAME||p.town))||"").trim(),
+    lookup:function(n){const k=Object.keys(MA_DATA).find(x=>x.toUpperCase()===String(n).toUpperCase());
+      return k?{name:k,d:MA_DATA[k]}:null;},
+    list:()=>Object.keys(MA_DATA).sort(),
+    columns:["Municipality","SHI %","Jobs pts"],
+    row:function(n){const d=MA_DATA[n];
+      return [n+(d.gw?' <span style="color:#ffd166" title="Gateway City">◆</span>':""),
+              d.shi.toFixed(2)+"%", "<b>"+d.pts+"</b>"];},
+    color:function(n){const r=this.lookup(n); if(!r) return "#6e7480";
+      return {6:"#3aa655",4:"#e3c22b",2:"#3d7fc1",0:"#6e7480"}[r.d.pts];},
+    tooltip:function(n){const r=this.lookup(n); if(!r) return "<b>"+n+"</b>"; const d=r.d;
+      return `<b>${r.name}</b>${d.gw?" &middot; <span style='color:#ffd166'>Gateway City</span>":""}`+
+        `<br>SHI ${d.shi.toFixed(2)}% — Priority 5 (&lt;12%) ${d.p5?"eligible":"not eligible"}`+
+        `<br>Auto VMT/commuter: ${d.vmt}`+
+        `<br><b>Jobs access: ${d.pts} pts</b>`;},
+    legend:{title:"Access to employment points",
+      rows:[["#3aa655","6 — ≤5 mi VMT/commuter"],["#e3c22b","4 — ≤7 mi"],["#3d7fc1","2 — ≤9 mi"],["#6e7480","0 — over 9 mi"]],
+      denom:"6 of 186 total points, inside the 14-point “Area of Opportunity” category. ◆ = Gateway City (Priority 2). Municipal SHI under 12% opens Priority 5."},
+    score:function(n,util){const r=this.lookup(n); if(!r) return null; const d=r.d;
+      return {pts:d.pts+" jobs pts",
+        color:d.pts===6?"#3aa655":d.pts===4?"#e3c22b":d.pts===2?"#3d7fc1":"#6e7480",
+        rows:[["Auto VMT / commuter",d.vmt],
+              ["SHI",d.shi.toFixed(2)+"%"],
+              ["Priority 5 (SHI &lt;12%)",d.p5?"Eligible":"Not eligible"],
+              ["Gateway City (Priority 2)",d.gw?"Yes":"No"]],
+        note:"Massachusetts geography mostly sets <i>which priority category you can enter</i>, not points. The only clean municipal point criterion is access to employment (6 pts). The MCAS school-quality criterion (8 pts) is not mapped — see notes. MassDEP states its sewer and water layers are <b>not appropriate for site-specific analysis</b>; treat those rows as planning-level only."};},
+    utils:[
+      {id:"ma_sewer", label:"MA sewered area (MassDEP POTW)", color:"#00d8b4",
+       url:"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/DEP_SEWER_SERVICE_AREAS/FeatureServer/2"},
+      {id:"ma_water", label:"MA public water service (MassDEP)", color:"#5aa9ff",
+       url:"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/DEP_PWS_WATER_SERVICE_AREAS/FeatureServer/2"},
+      {id:"ma_sewer_np", label:"MA sewered area (non-POTW)", color:"#00a58c",
+       url:"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/DEP_SEWER_SERVICE_AREAS/FeatureServer/1"}
+    ],
+    screenUtils:{water:"ma_water", sewer:"ma_sewer"},
+    sources:'Boundaries <a href="https://www.mass.gov/info-details/massgis-data-municipalities" target="_blank">MassGIS</a> · <a href="https://www.mass.gov/doc/subsidized-housing-inventory-2/download" target="_blank">SHI 9/30/2025</a> · <a href="https://www.mass.gov/doc/2025-2026-lihtc-qap/download" target="_blank">EOHLC QAP</a> · <a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-sewer-system-service-area-boundaries" target="_blank">MassDEP sewer</a>'
+  }
+
+};
+const ORDER=["CT","RI","MA"];
+let active="CT";
+
+/* ------------------------------ map shell ------------------------------- */
+const ATTR="&copy; OpenStreetMap, &copy; CARTO";
+const map=L.map("map").setView([42.0,-71.6],7);
+const base=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",{attribution:ATTR,opacity:.35}).addTo(map);
+map.createPane("labels"); map.getPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
+const labels=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",{attribution:ATTR,pane:"labels"});
+let FILL=.9;
+
+const note=document.getElementById("utilnote");
+function warn(m){ note.innerHTML='<span class="warn">⚠ '+m+'</span>'+note.innerHTML; }
+window.addEventListener("error",e=>warn("Script error: "+(e.message||"?")+" (line "+(e.lineno||"?")+")"));
+
+document.getElementById("roads").onchange=function(e){
+  const on=e.target.checked;
+  FILL = on?.45:.9;
+  base.setUrl("https://{s}.basemaps.cartocdn.com/"+(on?"dark_all":"dark_nolabels")+"/{z}/{x}/{y}{r}.png");
+  base.setOpacity(on?1:.35);
+  if(on) labels.addTo(map); else map.removeLayer(labels);
+  restyle(); lift();
+};
+
+/* --------------------------- boundary layers ---------------------------- */
+const G={};   // per-state: {fill, hit, feats}
+function styleFor(code){
+  const S=STATES[code];
+  return f=>{
+    const n=S.nameOf(f.properties);
+    return code===active
+      ? {fillColor:S.color(n),weight:.7,color:"#0b0d11",fillOpacity:FILL}
+      : {fillColor:"#20242c",weight:.7,color:"#3a4150",fillOpacity:.55};
+  };
+}
+function restyle(){ ORDER.forEach(c=>{ if(G[c]&&G[c].fill) G[c].fill.setStyle(styleFor(c)); }); }
+function lift(){ ORDER.forEach(c=>{ if(G[c]&&G[c].hit&&map.hasLayer(G[c].hit)) G[c].hit.bringToFront(); }); }
+map.on("layeradd",()=>setTimeout(lift,0));
+
+const CLEAR={color:"#fff",weight:0,opacity:0,fillOpacity:0};
+function loadState(code){
+  const S=STATES[code];
+  return fetch(S.src.url).then(r=>r.json()).then(gj=>{
+    const fill=L.geoJSON(gj,{style:styleFor(code),interactive:false}).addTo(map);
+    const hit=L.geoJSON(gj,{style:()=>CLEAR}).addTo(map);
+    // ONE tooltip per state layer — per-feature tooltips linger when moving
+    // between neighbouring polygons.
+    hit.bindTooltip(l=>{
+      const n=STATES[code].nameOf(l.feature.properties);
+      return code===active ? STATES[code].tooltip(n)
+                           : `<b>${n}</b><br><i>${STATES[code].label} — switch Active scoring to see points</i>`;
+    },{sticky:true});
+    let hot=null;
+    const cool=()=>{ if(hot){ try{hot.setStyle(CLEAR);}catch(e){} hot=null; } };
+    hit.on("mouseover",e=>{ const l=e.propagatedFrom||e.layer; if(!l||l===hot) return;
+      cool(); hot=l; l.setStyle({color:"#fff",weight:2.4,opacity:1,fillOpacity:0}); });
+    hit.on("mouseout",e=>{ if((e.propagatedFrom||e.layer)===hot) cool(); });
+    hit.on("click",e=>{ const l=e.propagatedFrom||e.layer; if(!l) return;
+      const n=STATES[code].nameOf(l.feature.properties);
+      if(code!==active){ document.getElementById("state").value=code; setActive(code); }
+      const tr=document.querySelector('#tb tr[data-n="'+CSS.escape(n)+'"]');
+      if(tr){ document.querySelectorAll("#tb tr").forEach(x=>x.classList.remove("sel"));
+              tr.classList.add("sel"); tr.scrollIntoView({block:"center"}); } });
+    map.on("mouseout",()=>{ cool(); hit.closeTooltip(); });
+    G[code]={fill:fill,hit:hit,feats:gj.features||[]};
+    lift();
+  }).catch(e=>warn(S.label+" boundaries failed to load ("+(e.message||"network")+")."));
+}
+Promise.all(ORDER.map(loadState)).then(()=>{
+  const b=L.latLngBounds([]);
+  ORDER.forEach(c=>{ if(G[c]) b.extend(G[c].fill.getBounds()); });
+  if(b.isValid()) map.fitBounds(b,{padding:[12,12]});
+});
+
+/* ------------------------------- legend --------------------------------- */
+const legend=L.control({position:"bottomleft"});
+legend.onAdd=()=>{const d=L.DomUtil.create("div","legend");d.id="lg";return d;};
+legend.addTo(map);
+function drawLegend(){
+  const S=STATES[active], L1=S.legend;
+  document.getElementById("lg").innerHTML=
+    "<b>"+S.label+" — "+L1.title+"</b>"+
+    L1.rows.map(([c,t])=>`<div class="row"><span class="sw" style="background:${c}"></span>${t}</div>`).join("")+
+    `<div class="denom">${L1.denom}</div>`;
+}
+
+/* ---------------------------- utility layers ---------------------------- */
+
+/* ArcGIS caps each /query at maxRecordCount (often 1000). A single request
+   silently returns a truncated set, which looks complete. Page until the
+   service stops giving new features, and stop only on an explicit signal. */
+// Esri JSON polygons -> GeoJSON. Rings are outer if clockwise (positive
+// signed area in Esri's convention), holes if counter-clockwise.
+function esriToGeoJSON(feats){
+  const sArea=r=>{let s=0;for(let i=0,j=r.length-1;i<r.length;j=i++)s+=(r[j][0]*r[i][1]-r[i][0]*r[j][1]);return s/2;};
+  return (feats||[]).map(f=>{
+    const g=f.geometry||{}; const rings=g.rings||[];
+    const polys=[]; let cur=null;
+    for(const ring of rings){
+      if(sArea(ring)<0){ if(cur)polys.push(cur); cur=[ring]; }
+      else if(cur){ cur.push(ring); }
+      else { cur=[ring]; }
+    }
+    if(cur)polys.push(cur);
+    return {type:"Feature", properties:f.attributes||{},
+      geometry: polys.length? (polys.length===1?{type:"Polygon",coordinates:polys[0]}
+                                              :{type:"MultiPolygon",coordinates:polys}) : null};
+  }).filter(f=>f.geometry);
+}
+
+async function fetchAllPages(url){
+  const PAGE=1000, out=[], seen=new Set();
+  let offset=0, fmt="geojson";
+  for(let guard=0; guard<80; guard++){
+    const q=url+"/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326"+
+            "&maxAllowableOffset=0.0004&geometryPrecision=5&f="+fmt+
+            "&resultOffset="+offset+"&resultRecordCount="+PAGE;
+    const r=await fetch(q);
+    // Services advertising supportedQueryFormats "JSON" reject f=geojson, sometimes
+    // with a plain HTTP error rather than a JSON error body. Fall back either way.
+    if(!r.ok){
+      if(fmt==="geojson"){ fmt="json"; guard--; continue; }
+      throw new Error("HTTP "+r.status);
+    }
+    let gj;
+    try{ gj=await r.json(); }
+    catch(e){ if(fmt==="geojson"){ fmt="json"; guard--; continue; } throw new Error("bad response"); }
+    if(gj.error && fmt==="geojson"){ fmt="json"; guard--; continue; }
+    if(gj.error) throw new Error(gj.error.message||"service error");
+    let feats = fmt==="geojson" ? (gj.features||[]) : esriToGeoJSON(gj.features);
+    if(!feats.length) break;
+    let added=0;
+    for(const f of feats){
+      // de-dupe in case the service ignores resultOffset and replays page 1
+      const id=(f.id!==undefined?f.id:(f.properties&&(f.properties.OBJECTID??f.properties.objectid??f.properties.SEWER_ID??f.properties.PWS_ID)));
+      const key=(id!==undefined&&id!==null)?String(id):JSON.stringify(f.geometry).slice(0,120);
+      if(seen.has(key)) continue;
+      seen.add(key); out.push(f); added++;
+    }
+    if(added===0) break;                       // pagination unsupported — bail
+    if(feats.length<PAGE && !gj.exceededTransferLimit) break;
+    offset+=feats.length;
+  }
+  return out;
+}
+
+const ulayers={};
+function buildUtils(){
+  const box=document.getElementById("utils"); box.innerHTML="";
+  ORDER.forEach(code=>{
+    STATES[code].utils.forEach(u=>{
+      const id="u_"+u.id;
+      box.insertAdjacentHTML("beforeend",
+        `<div class="chk"><label class="cb"><input type="checkbox" id="${id}"><span class="sw" style="background:${u.color}"></span>${u.label}</label></div>`);
+      document.getElementById(id).onchange=e=>{
+        if(e.target.checked){
+          if(!ulayers[u.id]){
+            ulayers[u.id]=L.layerGroup().addTo(map);
+            fetchAllPages(u.url).then(feats=>{
+                L.geoJSON({type:"FeatureCollection",features:feats},
+                  {style:{color:u.color,weight:1,fillColor:u.color,fillOpacity:.25}}).addTo(ulayers[u.id]);
+                lift();
+              }).catch(err=>{ e.target.checked=false; map.removeLayer(ulayers[u.id]); delete ulayers[u.id];
+                warn(u.label+" did not load ("+(err.message||"network/CORS")+")."); });
+          } else ulayers[u.id].addTo(map);
+          lift();
+        } else if(ulayers[u.id]) map.removeLayer(ulayers[u.id]);
+      };
+    });
+  });
+  note.innerHTML='<b>Service</b> areas show where a utility is delivered. <b>Jurisdictional</b> / <b>ESA</b> areas show which provider is authorized — not proof of mains in the ground. Verify with the municipality.';
+}
+buildUtils();
+
+/* ------------------------------- table ---------------------------------- */
+function render(q){
+  const S=STATES[active];
+  document.getElementById("thr").innerHTML=S.columns.map((c,i)=>
+    `<th${i?' style="text-align:'+(i===S.columns.length-1?'right':'left')+'"':''}>${c}</th>`).join("");
+  const rows=S.list().filter(n=>!q||n.toLowerCase().includes(q));
+  document.getElementById("tb").innerHTML=rows.map(n=>{
+    const cells=S.row(n);
+    return `<tr data-n="${n}"><td><span class="sw" style="background:${S.color(n)};margin-right:7px"></span>${cells[0]}</td>`+
+      cells.slice(1).map((c,i)=>`<td style="text-align:${i===cells.length-2?'right':'left'}">${c}</td>`).join("")+"</tr>";
+  }).join("");
+  document.querySelectorAll("#tb tr").forEach(tr=>tr.onclick=()=>{
+    document.querySelectorAll("#tb tr").forEach(x=>x.classList.remove("sel")); tr.classList.add("sel");
+    const g=G[active]; if(!g) return;
+    g.hit.eachLayer(l=>{ if(STATES[active].nameOf(l.feature.properties).toUpperCase()===tr.dataset.n.toUpperCase())
+      map.fitBounds(l.getBounds(),{maxZoom:12}); });
+  });
+}
+document.getElementById("search").oninput=e=>render(e.target.value.toLowerCase());
+
+/* ---------------------------- state switching --------------------------- */
+function setActive(code){
+  active=code; restyle(); drawLegend(); render(document.getElementById("search").value.toLowerCase());
+  document.getElementById("foot").innerHTML=STATES[code].vintage+"<br>"+STATES[code].sources;
+}
+document.getElementById("state").onchange=e=>setActive(e.target.value);
+setActive("CT");
+
+/* --------------------------- address screening -------------------------- */
+let pin=null; const resEl=document.getElementById("result");
+function jsonp(url){return new Promise((ok,bad)=>{
+  const cb="__g"+Math.random().toString(36).slice(2);
+  window[cb]=d=>{ok(d);delete window[cb];s.remove();};
+  const s=document.createElement("script");
+  s.src=url+"&callback="+cb; s.onerror=()=>{bad(new Error("geocoder unreachable"));s.remove();};
+  document.body.appendChild(s);});}
+
+function inRing(pt,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){
+  const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];
+  if(((yi>pt[1])!=(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))c=!c;} return c;}
+function inGeom(pt,g){const ps=g.type==="Polygon"?[g.coordinates]:g.type==="MultiPolygon"?g.coordinates:[];
+  for(const poly of ps){ if(!poly.length||!inRing(pt,poly[0]))continue;
+    let hole=false; for(let k=1;k<poly.length;k++) if(inRing(pt,poly[k])){hole=true;break;}
+    if(!hole) return true;} return false;}
+function locate(lat,lng){
+  for(const c of ORDER){ const g=G[c]; if(!g) continue;
+    for(const f of g.feats) if(f.geometry && inGeom([lng,lat],f.geometry))
+      return {code:c, name:STATES[c].nameOf(f.properties)};
+  } return null;}
+
+async function hits(url,ll){
+  const body=new URLSearchParams({f:"json",
+    geometry:JSON.stringify({x:ll.lng,y:ll.lat,spatialReference:{wkid:4326}}),
+    geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",
+    outFields:"*",returnGeometry:"false"});
+  try{
+    const r=await fetch(url+"/query",{method:"POST",body:body,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+    if(!r.ok) return {ok:false,err:"HTTP "+r.status};
+    const j=await r.json();
+    if(j.error) return {ok:false,err:j.error.message||"service error"};
+    return {ok:true,features:(j.features||[]).map(f=>({properties:f.attributes||{}}))};
+  }catch(e){ return {ok:false,err:"unreachable ("+(e.message||"network/CORS")+")"}; }
+}
+const yn=r=>r&&r.ok?(r.features.length?"Yes":"No"):"<i>unavailable</i>";
+
+async function screen(q){
+  resEl.innerHTML='<span class="muted">Locating…</span>';
+  let d;
+  try{ d=await jsonp("https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address="+
+        encodeURIComponent(q)+"&benchmark=Public_AR_Current&format=jsonp"); }
+  catch(e){ resEl.innerHTML='<span class="muted">Could not reach the Census geocoder.</span>'; return; }
+  const m=d&&d.result&&d.result.addressMatches&&d.result.addressMatches[0];
+  if(!m){ resEl.innerHTML='<span class="muted">No match. Include the town and state.</span>'; return; }
+  const ll=L.latLng(m.coordinates.y,m.coordinates.x);
+  if(pin)map.removeLayer(pin);
+  pin=L.circleMarker(ll,{radius:7,color:"#fff",weight:2,fillColor:"#ff5c5c",fillOpacity:1}).addTo(map);
+  map.setView(ll,13);
+  resEl.innerHTML='<span class="muted">Checking service layers…</span>';
+
+  const loc=locate(ll.lat,ll.lng);
+  if(!loc){ resEl.innerHTML='<div class="big">Outside CT and RI</div><div class="muted">'+
+    (m.matchedAddress||"")+'</div>'; return; }
+  if(loc.code!==active){ document.getElementById("state").value=loc.code; setActive(loc.code); }
+
+  const S=STATES[loc.code];
+  const ids=[...new Set(Object.values(S.screenUtils))];
+  const res={}; const got=await Promise.all(ids.map(id=>{
+    const u=S.utils.find(x=>x.id===id); return hits(u.url,ll);}));
+  ids.forEach((id,i)=>res[id]=got[i]);
+
+  const sc=S.score(S.lookup(loc.name)?S.lookup(loc.name).name:loc.name,res);
+  const sw=res[S.screenUtils.sewer], wa=res[S.screenUtils.water];
+  const problems=[["sewer",sw],["water",wa]].filter(([,r])=>r&&!r.ok).map(([n,r])=>n+": "+r.err);
+
+  resEl.innerHTML=
+    `<div class="big">${(S.lookup(loc.name)||{name:loc.name}).name}, ${loc.code}</div>`+
+    `<div class="kv"><span>Matched</span><span>${m.matchedAddress||""}</span></div>`+
+    (sc?sc.rows.map(([k,v])=>`<div class="kv"><span>${k}</span><span>${v}</span></div>`).join(""):"")+
+    `<div class="kv"><span>Sewer</span><span>${yn(sw)}</span></div>`+
+    `<div class="kv"><span>Water service</span><span>${yn(wa)}</span></div>`+
+    (sc?`<div class="verdict" style="background:${sc.color}22;border:1px solid ${sc.color};color:${sc.color}">${S.label}: ${sc.pts}</div>`:"")+
+    (problems.length?`<div class="muted" style="color:#ffb4a2">Could not reach — ${problems.join("; ")}. Those rows are not answers.</div>`:"")+
+    `<div class="muted">${sc?sc.note:""}</div>`;
+}
+document.getElementById("addr").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&e.target.value.trim())screen(e.target.value.trim());});
+</script></body></html>
