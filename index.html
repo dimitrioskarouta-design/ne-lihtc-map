@@ -29,7 +29,11 @@ tr.sel td{background:#2b3444}
 .note{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.45}
 .warn{font-size:11.5px;color:#ffb4a2;margin-top:7px;line-height:1.4}
 .legend{background:rgba(23,26,33,.95);padding:10px 12px;border-radius:8px;border:1px solid var(--line);font-size:12px;line-height:1.85;max-width:265px}
-.legend b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px}
+.legend .lgTitle{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px;cursor:pointer;user-select:none}
+.legend .lgTitle::after{content:"▾";font-size:9px;flex:0 0 auto}
+.legend.collapsed .lgTitle{margin-bottom:0}
+.legend.collapsed .lgTitle::after{content:"▸"}
+.legend.collapsed .row,.legend.collapsed .denom{display:none}
 .legend .row{display:flex;align-items:center;gap:7px}
 .legend .denom{color:var(--muted);font-size:10.5px;margin-top:6px;line-height:1.35;border-top:1px solid var(--line);padding-top:6px}
 .leaflet-tooltip{background:#171a21;border:1px solid var(--line);color:var(--txt);box-shadow:none;font-size:12px}
@@ -45,8 +49,17 @@ footer a{color:#7aa2f7}
 #result .kv span:last-child{text-align:right}
 #result .verdict{margin-top:8px;padding:7px 9px;border-radius:6px;font-weight:600}
 #result .muted{color:var(--muted);font-size:11.5px;margin-top:7px;font-weight:400}
-#aboutBtn{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
-#aboutBtn:hover{color:var(--txt);border-color:#4a5262}
+#aboutBtn,#sideToggle{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+#aboutBtn:hover,#sideToggle:hover{color:var(--txt);border-color:#4a5262}
+summary.hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none;user-select:none}
+summary.hdr::-webkit-details-marker{display:none}
+summary.hdr::after{content:"▾";font-size:9px;color:var(--muted);flex:0 0 auto}
+details:not([open])>summary.hdr::after{content:"▸"}
+details.ctrl{padding:0}
+details.ctrl>summary.hdr{padding:11px 12px}
+details.ctrl[open]>summary.hdr{padding-bottom:5px}
+details.ctrl>:not(summary){margin:0 12px 11px}
+#wrap.side-collapsed #side{display:none}
 #stale{display:none;background:#3a2a1a;border:1px solid #7a5a2a;color:#ffd39b;padding:5px 10px;border-radius:6px;font-size:12px}
 #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;overflow:auto;padding:40px 20px}
 #modalBox{max-width:860px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 26px}
@@ -80,6 +93,7 @@ footer a{color:#7aa2f7}
 <h1>New England LIHTC Siting Map</h1>
 <div id="stale"></div>
 <button id="aboutBtn">About &amp; data sources</button>
+<button id="sideToggle">Hide panel</button>
 <div id="sub">Connecticut, Rhode Island &amp; Massachusetts &middot; scores are <b>not</b> comparable across states<br><span id="builtline"></span></div>
 </header>
 <div id="modal"><div id="modalBox">
@@ -183,20 +197,20 @@ years; (4) RIHousing's newer LMIH chart, published annually. The live layers abo
 <div id="wrap"><div id="map"></div>
 <div id="side">
 
-<div class="ctrl"><label class="hdr">Active scoring</label>
+<details class="ctrl" open><summary class="hdr">Active scoring</summary>
 <select id="state">
   <option value="CT">Connecticut — CHFA Housing Needs &amp; Location</option>
   <option value="RI">Rhode Island — RIHousing QAP Community criterion A</option>
   <option value="MA">Massachusetts — EOHLC access to employment</option>
 </select>
 <div class="note">Only the active state is colored. The other renders neutral so you keep the geography without implying the two scales mean the same thing &mdash; they don't.</div>
-</div>
+</details>
 
-<div class="ctrl"><label class="hdr">Screen a site</label>
+<details class="ctrl" open><summary class="hdr">Screen a site</summary>
 <input id="addr" placeholder="123 Main St, Providence RI &crarr;">
 <div class="chk" style="margin-top:7px"><label class="cb"><input type="checkbox" id="clickmode"><span class="sw" style="background:#ff5c5c"></span>Click the map to screen a point</label></div>
 <div id="result"></div>
-</div>
+</details>
 
 <div class="ctrl"><label class="hdr">Utility overlays</label>
 <div id="utils"></div>
@@ -491,12 +505,16 @@ Promise.all(ORDER.map(loadState)).then(()=>{
 
 /* ------------------------------- legend --------------------------------- */
 const legend=L.control({position:"bottomleft"});
-legend.onAdd=()=>{const d=L.DomUtil.create("div","legend");d.id="lg";return d;};
+legend.onAdd=()=>{
+  const d=L.DomUtil.create("div","legend");d.id="lg";
+  d.addEventListener("click",e=>{ if(e.target.closest(".lgTitle")) d.classList.toggle("collapsed"); });
+  return d;
+};
 legend.addTo(map);
 function drawLegend(){
   const S=STATES[active], L1=S.legend;
   document.getElementById("lg").innerHTML=
-    "<b>"+S.label+" — "+L1.title+"</b>"+
+    '<div class="lgTitle">'+S.label+" — "+L1.title+"</div>"+
     L1.rows.map(([c,t])=>`<div class="row"><span class="sw" style="background:${c}"></span>${t}</div>`).join("")+
     `<div class="denom">${L1.denom}</div>`;
 }
@@ -655,6 +673,7 @@ async function hits(url,ll){
 const yn=r=>r&&r.ok?(r.features.length?"Yes":"No"):"<i>unavailable</i>";
 
 async function screen(q){
+  resEl.closest("details").open=true;
   resEl.innerHTML='<span class="muted">Locating…</span>';
   let d;
   try{ d=await jsonp("https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address="+
@@ -683,6 +702,7 @@ async function reverseLabel(ll){
 }
 
 async function screenAt(ll, label, recenter){
+  resEl.closest("details").open=true;
   const m={matchedAddress: label||""};
   if(pin)map.removeLayer(pin);
   pin=L.circleMarker(ll,{radius:7,color:"#fff",weight:2,fillColor:"#ff5c5c",fillOpacity:1}).addTo(map);
@@ -741,6 +761,13 @@ async function screenAt(ll, label, recenter){
 }
 document.getElementById("addr").addEventListener("keydown",e=>{
   if(e.key==="Enter"&&e.target.value.trim())screen(e.target.value.trim());});
+
+// ---------- collapse whole sidebar ----------
+document.getElementById("sideToggle").onclick=e=>{
+  const collapsed=document.getElementById("wrap").classList.toggle("side-collapsed");
+  e.target.textContent=collapsed?"Show panel":"Hide panel";
+  requestAnimationFrame(()=>map.invalidateSize());
+};
 
 // ---------- about / provenance ----------
 const BUILT=new Date("2026-08-04T00:00:00Z");
