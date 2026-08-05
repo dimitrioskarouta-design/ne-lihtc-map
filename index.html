@@ -38,6 +38,7 @@ tr.sel td{background:#2b3444}
 footer{padding:9px 12px;font-size:10.5px;color:var(--muted);border-top:1px solid var(--line)}
 footer a{color:#7aa2f7}
 #result{margin-top:10px;font-size:12.5px;line-height:1.6}
+.screening #map{cursor:crosshair}
 #result .big{font-size:15px;font-weight:600;margin:2px 0 6px}
 #result .kv{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #1f232c;padding:3px 0}
 #result .kv span:first-child{color:var(--muted)}
@@ -118,6 +119,8 @@ were transcribed from a document on the build date and <b>will not update themse
 <td>MGL c.23A §3A. The QAP text still says 24.</td></tr>
 <tr><td>Tract poverty gate</td><td class="live">latest ACS 5-year</td>
 <td>Esri Living Atlas ACS (table B17020) — refreshes annually</td></tr>
+<tr><td>Reverse geocoding (click-to-screen label only)</td><td class="live">current</td>
+<td>OpenStreetMap Nominatim. Used <b>only</b> to label a clicked point; all screening is done from coordinates, so a failure costs nothing but the street name. Nominatim's usage policy discourages heavy automated use — if this map ever gets real traffic, move to a keyed geocoder.</td></tr>
 <tr><td>Qualified Census Tracts</td><td class="live">FY2026 designation</td>
 <td><a href="https://www.huduser.gov/portal/datasets/qct.html" target="_blank">HUD Qualified Census Tracts 2026</a> — checked at the screened point; HUD redesignates annually, so swap the service URL to the new year when it publishes</td></tr>
 <tr><td>Municipal boundaries</td><td class="live">survey-based</td>
@@ -176,8 +179,9 @@ years; (4) RIHousing's newer LMIH chart, published annually. The live layers abo
 <div class="note">Only the active state is colored. The other renders neutral so you keep the geography without implying the two scales mean the same thing &mdash; they don't.</div>
 </div>
 
-<div class="ctrl"><label class="hdr">Screen an address</label>
+<div class="ctrl"><label class="hdr">Screen a site</label>
 <input id="addr" placeholder="123 Main St, Providence RI &crarr;">
+<div class="chk" style="margin-top:7px"><label class="cb"><input type="checkbox" id="clickmode"><span class="sw" style="background:#ff5c5c"></span>Click the map to screen a point</label></div>
 <div id="result"></div>
 </div>
 
@@ -453,7 +457,8 @@ function loadState(code){
     hit.on("mouseover",e=>{ const l=e.propagatedFrom||e.layer; if(!l||l===hot) return;
       cool(); hot=l; l.setStyle({color:"#fff",weight:2.4,opacity:1,fillOpacity:0}); });
     hit.on("mouseout",e=>{ if((e.propagatedFrom||e.layer)===hot) cool(); });
-    hit.on("click",e=>{ const l=e.propagatedFrom||e.layer; if(!l) return;
+    hit.on("click",e=>{ if(typeof clickMode!=="undefined" && clickMode){ screenAt(e.latlng,null,false); return; }
+      const l=e.propagatedFrom||e.layer; if(!l) return;
       const n=STATES[code].nameOf(l.feature.properties);
       if(code!==active){ document.getElementById("state").value=code; setActive(code); }
       const tr=document.querySelector('#tb tr[data-n="'+CSS.escape(n)+'"]');
@@ -642,17 +647,46 @@ async function screen(q){
   try{ d=await jsonp("https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address="+
         encodeURIComponent(q)+"&benchmark=Public_AR_Current&format=jsonp"); }
   catch(e){ resEl.innerHTML='<span class="muted">Could not reach the Census geocoder.</span>'; return; }
-  const m=d&&d.result&&d.result.addressMatches&&d.result.addressMatches[0];
-  if(!m){ resEl.innerHTML='<span class="muted">No match. Include the town and state.</span>'; return; }
-  const ll=L.latLng(m.coordinates.y,m.coordinates.x);
+  const m0=d&&d.result&&d.result.addressMatches&&d.result.addressMatches[0];
+  if(!m0){ resEl.innerHTML='<span class="muted">No match. Include the town and state.</span>'; return; }
+  return screenAt(L.latLng(m0.coordinates.y,m0.coordinates.x), m0.matchedAddress||"", true);
+}
+
+// Reverse geocode for a display label only. OpenStreetMap Nominatim; the screening
+// itself never depends on it, so a failure just falls back to coordinates.
+async function reverseLabel(ll){
+  try{
+    const r=await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&lat="+
+      ll.lat.toFixed(6)+"&lon="+ll.lng.toFixed(6),{headers:{"Accept":"application/json"}});
+    if(!r.ok) return null;
+    const j=await r.json();
+    if(!j||!j.address) return null;
+    const a=j.address;
+    const street=[a.house_number,a.road].filter(Boolean).join(" ");
+    const town=a.city||a.town||a.village||a.hamlet||a.municipality||"";
+    const line=[street,town,a.state,a.postcode].filter(Boolean).join(", ");
+    return line||j.display_name||null;
+  }catch(e){ return null; }
+}
+
+async function screenAt(ll, label, recenter){
+  const m={matchedAddress: label||""};
   if(pin)map.removeLayer(pin);
   pin=L.circleMarker(ll,{radius:7,color:"#fff",weight:2,fillColor:"#ff5c5c",fillOpacity:1}).addTo(map);
-  map.setView(ll,13);
+  if(recenter) map.setView(ll,13);
   resEl.innerHTML='<span class="muted">Checking service layers…</span>';
+  // Kick the reverse lookup off now so it runs alongside the service queries,
+  // but resolve it BEFORE rendering — patching the DOM afterwards raced with
+  // the panel being written and silently did nothing.
+  const coords = ll.lat.toFixed(5)+", "+ll.lng.toFixed(5);
+  const labelP = m.matchedAddress ? Promise.resolve(m.matchedAddress) : reverseLabel(ll);
+  const geocoded = !m.matchedAddress;
 
   const loc=locate(ll.lat,ll.lng);
-  if(!loc){ resEl.innerHTML='<div class="big">Outside CT and RI</div><div class="muted">'+
-    (m.matchedAddress||"")+'</div>'; return; }
+  if(!loc){
+    m.matchedAddress=(await labelP)||coords;
+    resEl.innerHTML='<div class="big">Outside CT, RI and MA</div><div class="muted">'+
+      m.matchedAddress+'</div>'; return; }
   if(loc.code!==active){ document.getElementById("state").value=loc.code; setActive(loc.code); }
 
   const S=STATES[loc.code];
@@ -676,9 +710,11 @@ async function screen(q){
   const sw=res[S.screenUtils.sewer], wa=res[S.screenUtils.water];
   const problems=[["sewer",sw],["water",wa]].filter(([,r])=>r&&!r.ok).map(([n,r])=>n+": "+r.err);
 
+  m.matchedAddress=(await labelP)||coords;
   resEl.innerHTML=
     `<div class="big">${(S.lookup(loc.name)||{name:loc.name}).name}, ${loc.code}</div>`+
-    `<div class="kv"><span>Matched</span><span>${m.matchedAddress||""}</span></div>`+
+    `<div class="kv"><span>${geocoded?"Address (approx.)":"Matched"}</span><span>${m.matchedAddress}</span></div>`+
+    (geocoded?`<div class="kv"><span>Coordinates</span><span>${coords}</span></div>`:"")+
     (sc?sc.rows.map(([k,v])=>`<div class="kv"><span>${k}</span><span>${v}</span></div>`).join(""):"")+
     (ex?ex.rows.map(([k,v])=>`<div class="kv"><span>${k}</span><span>${v}</span></div>`).join(""):"")+
     `<div class="kv"><span>Qualified Census Tract (2026)</span><span>${qct===null?"<i>unavailable</i>":(qct?"Yes":"No")}</span></div>`+
@@ -711,4 +747,12 @@ const BUILT=new Date("2026-08-04T00:00:00Z");
   m.onclick=e=>{ if(e.target===m) m.style.display="none"; };
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") m.style.display="none"; });
 })();
+
+// ---------- click to screen ----------
+let clickMode=false;
+document.getElementById("clickmode").onchange=e=>{
+  clickMode=e.target.checked;
+  document.body.classList.toggle("screening",clickMode);
+};
+map.on("click",e=>{ if(clickMode) screenAt(e.latlng,null,false); });
 </script></body></html>
