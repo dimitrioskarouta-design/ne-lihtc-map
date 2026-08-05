@@ -128,6 +128,12 @@ were transcribed from a document on the build date and <b>will not update themse
 <td><a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-public-drinking-water-system-service-area-boundaries" target="_blank">MassDEP WURP</a> (PubV2025_3)</td></tr>
 </table>
 
+<h3>Basemaps</h3>
+<table>
+<tr><td>Dark basemap and labels</td><td class="live">current</td><td>CARTO, &copy; OpenStreetMap contributors</td></tr>
+<tr><td>Satellite imagery</td><td class="live">current</td><td>Esri World Imagery — Esri, Maxar, Earthstar Geographics and the GIS User Community. Capture dates vary by location; Esri does not publish a single vintage.</td></tr>
+</table>
+
 <h3>How far to trust the utility layers</h3>
 <div class="warnbox">
 All three states built these the same two ways: where a utility supplied pipe locations, a <b>300-foot buffer</b>
@@ -177,8 +183,15 @@ years; (4) RIHousing's newer LMIH chart, published annually. The live layers abo
 
 <div class="ctrl"><label class="hdr">Utility overlays</label>
 <div id="utils"></div>
-<div class="chk" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
-  <label class="cb"><input type="checkbox" id="roads"><span class="sw" style="background:#8b93a3"></span>Roads &amp; labels</label></div>
+<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">
+  <label class="hdr">Basemap</label>
+  <select id="basemap">
+    <option value="dark">Dark (default)</option>
+    <option value="satellite">Satellite imagery</option>
+  </select>
+  <div class="chk" style="margin-top:7px">
+    <label class="cb"><input type="checkbox" id="roads"><span class="sw" style="background:#8b93a3"></span>Roads &amp; labels</label></div>
+</div>
 <div class="note" id="utilnote"></div>
 </div>
 
@@ -356,25 +369,56 @@ const ORDER=["CT","RI","MA"];
 let active="CT";
 
 /* ------------------------------ map shell ------------------------------- */
-const ATTR="&copy; OpenStreetMap, &copy; CARTO";
+const CARTO_ATTR="&copy; OpenStreetMap, &copy; CARTO";
+const ESRI_ATTR="Imagery &copy; Esri — Esri, Maxar, Earthstar Geographics and the GIS User Community";
 const map=L.map("map").setView([42.0,-71.6],7);
-const base=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",{attribution:ATTR,opacity:.35}).addTo(map);
 map.createPane("labels"); map.getPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
-const labels=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",{attribution:ATTR,pane:"labels"});
-let FILL=.9;
+
+// Two basemaps. Satellite needs a lighter choropleth so imagery reads through,
+// and a light label set — dark CARTO labels are illegible over aerial photos.
+const BASEMAPS={
+  dark:{
+    tiles:"https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+    tilesRoads:"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attr:CARTO_ATTR, opacity:.35, opacityRoads:1,
+    labels:"https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
+    labelsAttr:CARTO_ATTR, fill:.9, fillRoads:.45, maxZoom:20
+  },
+  satellite:{
+    tiles:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    tilesRoads:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr:ESRI_ATTR, opacity:1, opacityRoads:1,
+    labels:"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    labelsAttr:ESRI_ATTR, fill:.5, fillRoads:.32, maxZoom:19
+  }
+};
+let baseKey="dark", roadsOn=false, FILL=BASEMAPS.dark.fill;
+let base=null, labels=null;
+
+function applyBasemap(){
+  const B=BASEMAPS[baseKey];
+  FILL = roadsOn ? B.fillRoads : B.fill;
+  if(base) map.removeLayer(base);
+  base=L.tileLayer(roadsOn?B.tilesRoads:B.tiles,
+    {attribution:B.attr, opacity:roadsOn?B.opacityRoads:B.opacity, maxZoom:B.maxZoom});
+  base.addTo(map);
+  base.setZIndex(0);
+  if(labels){ map.removeLayer(labels); labels=null; }
+  if(roadsOn){
+    labels=L.tileLayer(B.labels,{attribution:B.labelsAttr,pane:"labels",maxZoom:B.maxZoom}).addTo(map);
+  }
+  // G is declared with const further down; on the initial call it is still in the
+  // temporal dead zone, so guard rather than throw and kill the whole script.
+  try{ restyle(); lift(); }catch(e){ /* first run, layers not built yet */ }
+}
 
 const note=document.getElementById("utilnote");
 function warn(m){ note.innerHTML='<span class="warn">⚠ '+m+'</span>'+note.innerHTML; }
 window.addEventListener("error",e=>warn("Script error: "+(e.message||"?")+" (line "+(e.lineno||"?")+")"));
 
-document.getElementById("roads").onchange=function(e){
-  const on=e.target.checked;
-  FILL = on?.45:.9;
-  base.setUrl("https://{s}.basemaps.cartocdn.com/"+(on?"dark_all":"dark_nolabels")+"/{z}/{x}/{y}{r}.png");
-  base.setOpacity(on?1:.35);
-  if(on) labels.addTo(map); else map.removeLayer(labels);
-  restyle(); lift();
-};
+document.getElementById("roads").onchange=function(e){ roadsOn=e.target.checked; applyBasemap(); };
+document.getElementById("basemap").onchange=function(e){ baseKey=e.target.value; applyBasemap(); };
+applyBasemap();
 
 /* --------------------------- boundary layers ---------------------------- */
 const G={};   // per-state: {fill, hit, feats}
@@ -384,7 +428,7 @@ function styleFor(code){
     const n=S.nameOf(f.properties);
     return code===active
       ? {fillColor:S.color(n),weight:.7,color:"#0b0d11",fillOpacity:FILL}
-      : {fillColor:"#20242c",weight:.7,color:"#3a4150",fillOpacity:.55};
+      : {fillColor:"#20242c",weight:.7,color:baseKey==="satellite"?"#dfe4ee":"#3a4150",fillOpacity:baseKey==="satellite"?.25:.55};
   };
 }
 function restyle(){ ORDER.forEach(c=>{ if(G[c]&&G[c].fill) G[c].fill.setStyle(styleFor(c)); }); }
