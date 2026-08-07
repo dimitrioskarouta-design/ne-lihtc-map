@@ -88,6 +88,14 @@ footer a{color:#7aa2f7}
   #map{height:50vh;min-height:260px}
   .legend{max-width:70vw}
 }
+.tapPop .leaflet-popup-content{margin:9px 11px;font-size:12.5px;line-height:1.5}
+.tapPop .leaflet-popup-content b{font-size:13.5px}
+@media (max-width: 820px){
+  .leaflet-popup-content{font-size:12.5px}
+  label.cb{padding:3px 0}
+  #side .ctrl label.hdr{min-height:26px}
+  .leaflet-touch .leaflet-control-zoom a{width:34px;line-height:34px;font-size:19px}
+}
 /* legend collapse */
 .legend .lgHead{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
 .legend .lgToggle{color:var(--muted);font-size:14px;line-height:1;padding:0 2px}
@@ -470,6 +478,8 @@ function restyle(){ ORDER.forEach(c=>{ if(G[c]&&G[c].fill) G[c].fill.setStyle(st
 function lift(){ ORDER.forEach(c=>{ if(G[c]&&G[c].hit&&map.hasLayer(G[c].hit)) G[c].hit.bringToFront(); }); }
 map.on("layeradd",()=>setTimeout(lift,0));
 
+// No hover on touch screens; drives tap-vs-hover behaviour throughout.
+const TOUCH = window.matchMedia("(hover: none), (pointer: coarse)").matches || ("ontouchstart" in window);
 const CLEAR={color:"#fff",weight:0,opacity:0,fillOpacity:0};
 function loadState(code){
   const S=STATES[code];
@@ -478,24 +488,36 @@ function loadState(code){
     const hit=L.geoJSON(gj,{style:()=>CLEAR}).addTo(map);
     // ONE tooltip per state layer — per-feature tooltips linger when moving
     // between neighbouring polygons.
-    hit.bindTooltip(l=>{
+    const contentFor=l=>{
       const n=STATES[code].nameOf(l.feature.properties);
       return code===active ? STATES[code].tooltip(n)
                            : `<b>${n}</b><br><i>${STATES[code].label} — switch Active scoring to see points</i>`;
-    },{sticky:true});
+    };
+    // Touch devices have no hover, so a sticky tooltip never fires. Bind it only
+    // where hovering exists; on touch the same content opens as a tap popup.
+    if(!TOUCH) hit.bindTooltip(contentFor,{sticky:true});
     let hot=null;
     const cool=()=>{ if(hot){ try{hot.setStyle(CLEAR);}catch(e){} hot=null; } };
-    hit.on("mouseover",e=>{ const l=e.propagatedFrom||e.layer; if(!l||l===hot) return;
-      cool(); hot=l; l.setStyle({color:"#fff",weight:2.4,opacity:1,fillOpacity:0}); });
-    hit.on("mouseout",e=>{ if((e.propagatedFrom||e.layer)===hot) cool(); });
+    if(!TOUCH){
+      hit.on("mouseover",e=>{ const l=e.propagatedFrom||e.layer; if(!l||l===hot) return;
+        cool(); hot=l; l.setStyle({color:"#fff",weight:2.4,opacity:1,fillOpacity:0}); });
+      hit.on("mouseout",e=>{ if((e.propagatedFrom||e.layer)===hot) cool(); });
+      map.on("mouseout",()=>{ cool(); try{hit.closeTooltip();}catch(e){} });
+    }
     hit.on("click",e=>{ if(typeof clickMode!=="undefined" && clickMode){ screenAt(e.latlng,null,false); return; }
       const l=e.propagatedFrom||e.layer; if(!l) return;
       const n=STATES[code].nameOf(l.feature.properties);
+      if(TOUCH){
+        // outline the tapped municipality and show its detail as a dismissible popup
+        cool(); hot=l; l.setStyle({color:"#fff",weight:2.4,opacity:1,fillOpacity:0});
+        L.popup({closeButton:true,autoPan:true,maxWidth:260,className:"tapPop"})
+          .setLatLng(e.latlng).setContent(contentFor(l)).openOn(map);
+      }
       if(code!==active){ document.getElementById("state").value=code; setActive(code); }
       const tr=document.querySelector('#tb tr[data-n="'+CSS.escape(n)+'"]');
       if(tr){ document.querySelectorAll("#tb tr").forEach(x=>x.classList.remove("sel"));
               tr.classList.add("sel"); tr.scrollIntoView({block:"center"}); } });
-    map.on("mouseout",()=>{ cool(); hit.closeTooltip(); });
+    if(TOUCH) map.on("popupclose",()=>cool());
     G[code]={fill:fill,hit:hit,feats:gj.features||[]};
     if(typeof STATES[code].ingest==="function") STATES[code].ingest(gj.features||[]);
     lift();
@@ -863,5 +885,11 @@ function refitMap(){
   mq.addEventListener?mq.addEventListener("change",apply):mq.addListener(apply);
   let rz; window.addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(()=>{ try{ refitMap(); }catch(e){} },250); });
   window.addEventListener("orientationchange",()=>{ setTimeout(()=>{ try{ refitMap(); }catch(e){} },400); });
+})();
+
+// swap the hover wording for touch users
+(function(){
+  const n=document.getElementById("interactHint");
+  if(n && TOUCH) n.innerHTML="Tap a municipality for its score. Only the active state is coloured — the other stays neutral so the two scales aren't confused.";
 })();
 </script></body></html>
