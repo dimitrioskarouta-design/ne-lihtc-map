@@ -62,6 +62,34 @@ footer a{color:#7aa2f7}
 #modalBox p{font-size:12.5px;line-height:1.6;color:var(--txt)}
 #modalBox .warnbox{background:#2a1e1e;border:1px solid #5a3a3a;border-radius:7px;padding:10px 12px;margin-top:10px;font-size:12.5px;line-height:1.55}
 #closeModal{float:right;background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
+
+/* ---------------- mobile ---------------- */
+@media (max-width: 820px){
+  header{padding:9px 12px;gap:8px}
+  h1{font-size:15px}
+  #sub{font-size:10.5px;line-height:1.35;max-width:100%;text-align:left;margin-left:0}
+  #sub br{display:none}
+  #wrap{flex-direction:column;height:auto;min-height:calc(100vh - 52px)}
+  #map{height:56vh;min-height:300px;flex:none}
+  #side{width:100%;border-left:none;border-top:1px solid var(--line);max-height:none}
+  #list{max-height:46vh}
+  .legend{font-size:11px;line-height:1.55;padding:8px 10px;max-width:62vw}
+  .legend .denom{font-size:9.5px}
+  #modal{padding:14px 8px}
+  #modalBox{padding:16px 14px}
+  #modalBox td{display:block;width:auto!important;padding:3px 0}
+  #modalBox td:first-child{color:var(--txt);font-weight:600;padding-top:9px}
+  #modalBox table{margin-bottom:10px}
+}
+@media (max-width: 480px){
+  #map{height:50vh;min-height:260px}
+  .legend{max-width:70vw}
+}
+/* legend collapse */
+.legend .lgHead{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
+.legend .lgToggle{color:var(--muted);font-size:14px;line-height:1;padding:0 2px}
+.legend.collapsed .lgBody{display:none}
+.legend.collapsed{padding-bottom:8px}
 </style></head><body>
 <header>
 <h1>New England LIHTC Siting Map</h1>
@@ -480,12 +508,19 @@ Promise.all(ORDER.map(loadState)).then(()=>{
 const legend=L.control({position:"bottomleft"});
 legend.onAdd=()=>{const d=L.DomUtil.create("div","legend");d.id="lg";return d;};
 legend.addTo(map);
+let legendCollapsed = window.matchMedia("(max-width: 820px)").matches; // start closed on phones
 function drawLegend(){
-  const S=STATES[active], L1=S.legend;
-  document.getElementById("lg").innerHTML=
-    "<b>"+S.label+" — "+L1.title+"</b>"+
-    L1.rows.map(([c,t])=>`<div class="row"><span class="sw" style="background:${c}"></span>${t}</div>`).join("")+
-    `<div class="denom">${L1.denom}</div>`;
+  const S=STATES[active], L1=S.legend, el=document.getElementById("lg");
+  el.innerHTML=
+    `<div class="lgHead"><b style="margin:0">${S.label} — ${L1.title}</b><span class="lgToggle">${legendCollapsed?"▸":"▾"}</span></div>`+
+    `<div class="lgBody">`+
+      L1.rows.map(([c,t])=>`<div class="row"><span class="sw" style="background:${c}"></span>${t}</div>`).join("")+
+      `<div class="denom">${L1.denom}</div>`+
+    `</div>`;
+  el.classList.toggle("collapsed", legendCollapsed);
+  const head=el.querySelector(".lgHead");
+  head.onclick=()=>{ legendCollapsed=!legendCollapsed; drawLegend(); };
+  L.DomEvent.disableClickPropagation(el);
 }
 
 /* ---------------------------- utility layers ---------------------------- */
@@ -755,4 +790,43 @@ document.getElementById("clickmode").onchange=e=>{
   document.body.classList.toggle("screening",clickMode);
 };
 map.on("click",e=>{ if(clickMode) screenAt(e.latlng,null,false); });
+
+// ---------- mobile: collapse the long sidebar sections ----------
+(function(){
+  const mq=window.matchMedia("(max-width: 820px)");
+  const sections=[...document.querySelectorAll("#side .ctrl")].filter(c=>c.querySelector("label.hdr"));
+  sections.forEach(sec=>{
+    const hdr=sec.querySelector("label.hdr");
+    const body=document.createElement("div");
+    body.className="secBody";
+    while(hdr.nextSibling) body.appendChild(hdr.nextSibling);
+    sec.appendChild(body);
+    hdr.style.cursor="pointer";
+    hdr.style.display="flex";
+    hdr.style.justifyContent="space-between";
+    hdr.style.alignItems="center";
+    const car=document.createElement("span"); car.textContent="▾"; car.style.fontSize="12px";
+    hdr.appendChild(car);
+    hdr.onclick=()=>{
+      const open=body.style.display!=="none";
+      body.style.display=open?"none":"";
+      car.textContent=open?"▸":"▾";
+    };
+    sec._body=body; sec._car=car;
+  });
+  function apply(){
+    const small=mq.matches;
+    sections.forEach((sec,i)=>{
+      // on phones open only "Screen a site"; on desktop open everything
+      const keepOpen = !small || i===1;
+      sec._body.style.display = keepOpen ? "" : "none";
+      sec._car.textContent = keepOpen ? "▾" : "▸";
+      sec._car.style.display = small ? "" : "none";
+      sec.querySelector("label.hdr").style.cursor = small ? "pointer" : "default";
+    });
+  }
+  apply();
+  mq.addEventListener?mq.addEventListener("change",apply):mq.addListener(apply);
+  window.addEventListener("resize",()=>{ if(map) setTimeout(()=>map.invalidateSize(),120); });
+})();
 </script></body></html>
