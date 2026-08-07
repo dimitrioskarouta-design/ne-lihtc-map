@@ -96,6 +96,9 @@ footer a{color:#7aa2f7}
   #side .ctrl label.hdr{min-height:26px}
   .leaflet-touch .leaflet-control-zoom a{width:34px;line-height:34px;font-size:19px}
 }
+.utilState{color:var(--muted);font-size:11px;font-style:italic}
+.cacheNote{font-size:10.5px;color:var(--muted);margin-bottom:6px}
+.cacheNote a{color:#7aa2f7}
 /* legend collapse */
 .legend .lgHead{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
 .legend .lgToggle{color:var(--muted);font-size:14px;line-height:1;padding:0 2px}
@@ -124,9 +127,9 @@ were transcribed from a document on the build date and <b>will not update themse
 <td><a href="https://www.chfa.org/assets/1/19/!2027-2028_Housing_Needs__Location_Guideline_publish.pdf" target="_blank">CHFA Housing Needs &amp; Location Guideline</a> — public-hearing version, not the adopted final</td></tr>
 <tr><td>Town boundaries</td><td class="live">2022</td>
 <td>data.ct.gov, served via a <a href="https://github.com/HandsOnDataViz/ct-boundaries" target="_blank">third-party GitHub mirror</a> — external dependency</td></tr>
-<tr><td>Sewer service</td><td class="live">2021 data, edited 2024</td>
+<tr><td>Sewer service</td><td class="live">2021 data, edited 2024 · cached 7d</td>
 <td><a href="https://geodata.ct.gov/datasets/CTDEEP::connected-sewer-service-areas/about" target="_blank">CT DEEP Connected Sewer Service Areas</a></td></tr>
-<tr><td>Water — Exclusive Service Areas</td><td class="live">compiled 2017, updated 2018</td>
+<tr><td>Water — Exclusive Service Areas</td><td class="live">compiled 2017, updated 2018 · cached 7d</td>
 <td><a href="https://portal.ct.gov/DPH/Drinking-Water/DWS/Public-Water-Supply-Map" target="_blank">CT DPH / WUCC</a> — authorised provider territory, <b>not</b> evidence of existing mains. Community systems only.</td></tr>
 </table>
 
@@ -140,7 +143,7 @@ were transcribed from a document on the build date and <b>will not update themse
 <td><a href="https://housing.ri.gov/data-reports/state-housing-plan-housing-2030" target="_blank">Housing 2030</a>, Exhibit 16 (Continued / Modest / Strategic Growth)</td></tr>
 <tr><td>Municipal boundaries</td><td class="live">1997 survey base</td>
 <td><a href="https://www.rigis.org/datasets/edc::municipalities-1997/about" target="_blank">RIGIS Municipalities</a></td></tr>
-<tr><td>Sewer, water service, water jurisdictional, Urban Services Boundary</td><td class="live">varies</td>
+<tr><td>Sewer, water service, water jurisdictional, Urban Services Boundary</td><td class="live">varies · cached 7d</td>
 <td><a href="https://risegis.ri.gov/hosting/rest/services/RIDEM/Boundaries_and_Regulatory_Overlays_v2/MapServer" target="_blank">RIDEM Boundaries &amp; Regulatory Overlays</a> — vintage per layer not independently verified</td></tr>
 </table>
 
@@ -164,11 +167,19 @@ were transcribed from a document on the build date and <b>will not update themse
 <td><a href="https://www.huduser.gov/portal/datasets/qct.html" target="_blank">HUD Qualified Census Tracts 2026</a> — checked at the screened point; HUD redesignates annually, so swap the service URL to the new year when it publishes</td></tr>
 <tr><td>Municipal boundaries</td><td class="live">survey-based</td>
 <td><a href="https://www.mass.gov/info-details/massgis-data-municipalities" target="_blank">MassGIS Municipalities</a></td></tr>
-<tr><td>Sewer service</td><td class="live">Oct 2025</td>
+<tr><td>Sewer service</td><td class="live">Oct 2025 · cached 7d</td>
 <td><a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-sewer-system-service-area-boundaries" target="_blank">MassDEP WURP</a> (PubV2025_10)</td></tr>
-<tr><td>Public water service</td><td class="live">March 2025</td>
+<tr><td>Public water service</td><td class="live">March 2025 · cached 7d</td>
 <td><a href="https://www.mass.gov/info-details/massgis-data-massdep-estimated-public-drinking-water-system-service-area-boundaries" target="_blank">MassDEP WURP</a> (PubV2025_3)</td></tr>
 </table>
+
+<h3>Caching</h3>
+<p>Utility layers are cached in your browser (IndexedDB) after first load, because some
+publishers are slow — CT DEEP's sewer service takes 12&ndash;19 seconds to generalise its
+geometry on every request. A cached copy is shown <b>immediately</b>, and refreshed in the
+background once it is more than <b>7 days</b> old. So those layers can be up to a week
+behind the publisher. The date is shown above the utility toggles, with a "refresh now"
+link that clears the cache and re-fetches. Scoring data and boundaries are not cached.</p>
 
 <h3>Basemaps</h3>
 <table>
@@ -610,33 +621,142 @@ async function fetchAllPages(url){
   return out;
 }
 
+/* ============================================================================
+   Utility layer cache (IndexedDB, stale-while-revalidate)
+
+   Some publishers are slow — CT DEEP's sewer service takes 12-19s to
+   generalise its geometry on every request. Cache the result so repeat visits
+   are instant, serve a stale copy immediately if we have one, then refresh in
+   the background when it is older than a week. The trade: layers can be up to
+   7 days old, which is stated in the UI and the About panel.
+   ========================================================================== */
+const CACHE_DB="ne-lihtc-cache", CACHE_STORE="layers", CACHE_MAX_AGE=7*24*60*60*1000;
+function idb(){
+  return new Promise((ok,bad)=>{
+    const rq=indexedDB.open(CACHE_DB,1);
+    rq.onupgradeneeded=()=>{ const db=rq.result;
+      if(!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE,{keyPath:"id"}); };
+    rq.onsuccess=()=>ok(rq.result); rq.onerror=()=>bad(rq.error);
+  });
+}
+async function cacheGet(id){
+  try{ const db=await idb();
+    return await new Promise((ok)=>{ const t=db.transaction(CACHE_STORE,"readonly").objectStore(CACHE_STORE).get(id);
+      t.onsuccess=()=>ok(t.result||null); t.onerror=()=>ok(null); });
+  }catch(e){ return null; }
+}
+async function cachePut(id,features){
+  try{ const db=await idb();
+    db.transaction(CACHE_STORE,"readwrite").objectStore(CACHE_STORE)
+      .put({id, fetchedAt:Date.now(), features});
+  }catch(e){ /* private mode / quota — just skip caching */ }
+}
+async function cacheClear(){
+  try{ const db=await idb();
+    db.transaction(CACHE_STORE,"readwrite").objectStore(CACHE_STORE).clear();
+  }catch(e){}
+}
+let newestCacheStamp=0;
+function stampCacheNote(){
+  const el=document.getElementById("cacheNote"); if(!el) return;
+  el.innerHTML = newestCacheStamp
+    ? `Utility layers cached ${new Date(newestCacheStamp).toLocaleDateString()} · <a href="#" id="refreshUtil">refresh now</a>`
+    : `Utility layers not cached yet`;
+  const a=document.getElementById("refreshUtil");
+  if(a) a.onclick=async ev=>{ ev.preventDefault();
+    await cacheClear(); newestCacheStamp=0;
+    Object.keys(ulayers).forEach(k=>{ try{map.removeLayer(ulayers[k]);}catch(e){} delete ulayers[k]; });
+    document.querySelectorAll('#utils input[type=checkbox]:checked').forEach(cb=>{
+      cb.checked=false; cb.dispatchEvent(new Event("change"));
+      cb.checked=true;  cb.dispatchEvent(new Event("change"));
+    });
+    stampCacheNote();
+  };
+}
+
 const ulayers={};
+const utilBusy={};
+function setUtilLabel(u,state){
+  const lab=document.getElementById("lab_"+u.id); if(!lab) return;
+  lab.textContent = state ? " "+state : "";
+}
+function drawUtil(u,feats){
+  if(!ulayers[u.id]) return;
+  ulayers[u.id].clearLayers();
+  L.geoJSON({type:"FeatureCollection",features:feats},
+    {style:{color:u.color,weight:1,fillColor:u.color,fillOpacity:.25}}).addTo(ulayers[u.id]);
+  lift();
+}
+async function loadUtil(u,cb){
+  if(utilBusy[u.id]) return;
+  utilBusy[u.id]=true;
+  const cached=await cacheGet(u.id);
+  if(cached && cached.features){
+    drawUtil(u,cached.features);                       // instant, even if stale
+    newestCacheStamp=Math.max(newestCacheStamp,cached.fetchedAt); stampCacheNote();
+    const age=Date.now()-cached.fetchedAt;
+    if(age<CACHE_MAX_AGE){ setUtilLabel(u,""); utilBusy[u.id]=false; return; }
+    setUtilLabel(u,"(refreshing…)");                    // stale: revalidate quietly
+  } else {
+    setUtilLabel(u,"(loading…)");
+  }
+  try{
+    const feats=await fetchAllPages(u.url);
+    if(ulayers[u.id]) drawUtil(u,feats);
+    await cachePut(u.id,feats);
+    newestCacheStamp=Date.now(); stampCacheNote();
+    setUtilLabel(u,"");
+  }catch(err){
+    setUtilLabel(u,"");
+    if(!cached){                                        // nothing to fall back on
+      if(cb){ cb.checked=false; }
+      if(ulayers[u.id]){ try{map.removeLayer(ulayers[u.id]);}catch(e){} delete ulayers[u.id]; }
+      warn(u.label+" did not load ("+(err.message||"network/CORS")+").");
+    }
+  }
+  utilBusy[u.id]=false;
+}
+
+const userTouchedUtil={};
 function buildUtils(){
   const box=document.getElementById("utils"); box.innerHTML="";
   ORDER.forEach(code=>{
     STATES[code].utils.forEach(u=>{
       const id="u_"+u.id;
       box.insertAdjacentHTML("beforeend",
-        `<div class="chk"><label class="cb"><input type="checkbox" id="${id}"><span class="sw" style="background:${u.color}"></span>${u.label}</label></div>`);
-      document.getElementById(id).onchange=e=>{
+        `<div class="chk"><label class="cb"><input type="checkbox" id="${id}"><span class="sw" style="background:${u.color}"></span>${u.label}<span class="utilState" id="lab_${u.id}"></span></label></div>`);
+      const cb=document.getElementById(id);
+      cb.addEventListener("pointerdown",()=>{ userTouchedUtil[u.id]=true; });
+      cb.onchange=e=>{
         if(e.target.checked){
-          if(!ulayers[u.id]){
-            ulayers[u.id]=L.layerGroup().addTo(map);
-            fetchAllPages(u.url).then(feats=>{
-                L.geoJSON({type:"FeatureCollection",features:feats},
-                  {style:{color:u.color,weight:1,fillColor:u.color,fillOpacity:.25}}).addTo(ulayers[u.id]);
-                lift();
-              }).catch(err=>{ e.target.checked=false; map.removeLayer(ulayers[u.id]); delete ulayers[u.id];
-                warn(u.label+" did not load ("+(err.message||"network/CORS")+")."); });
-          } else ulayers[u.id].addTo(map);
+          if(!ulayers[u.id]){ ulayers[u.id]=L.layerGroup().addTo(map); loadUtil(u,e.target); }
+          else ulayers[u.id].addTo(map);
           lift();
         } else if(ulayers[u.id]) map.removeLayer(ulayers[u.id]);
       };
     });
   });
-  note.innerHTML='<b>Service</b> areas show where a utility is delivered. <b>Jurisdictional</b> / <b>ESA</b> areas show which provider is authorized — not proof of mains in the ground. Verify with the municipality.';
+  note.innerHTML='<div id="cacheNote" class="cacheNote"></div><b>Service</b> areas show where a utility is delivered. <b>Jurisdictional</b> / <b>ESA</b> areas show which provider is authorized — not proof of mains in the ground. Verify with the municipality.';
+  stampCacheNote();
 }
 buildUtils();
+
+/* Auto-enable only the ACTIVE state's sewer + water-service layers. Loading all
+   nine is 5.7 MB and visually incoherent. Manual choices are never overridden. */
+function autoUtilsFor(code){
+  const saveData = navigator.connection && navigator.connection.saveData;
+  if(saveData) return;
+  const S=STATES[code]; if(!S) return;
+  const want=new Set([S.screenUtils.sewer, S.screenUtils.water]);
+  ORDER.forEach(c=>{
+    STATES[c].utils.forEach(u=>{
+      if(userTouchedUtil[u.id]) return;               // respect manual choices
+      const cb=document.getElementById("u_"+u.id); if(!cb) return;
+      const should = (c===code) && want.has(u.id);
+      if(cb.checked!==should){ cb.checked=should; cb.dispatchEvent(new Event("change")); }
+    });
+  });
+}
 
 /* ------------------------------- table ---------------------------------- */
 function render(q){
@@ -661,6 +781,7 @@ document.getElementById("search").oninput=e=>render(e.target.value.toLowerCase()
 /* ---------------------------- state switching --------------------------- */
 function setActive(code){
   active=code; restyle(); drawLegend(); render(document.getElementById("search").value.toLowerCase());
+  try{ autoUtilsFor(code); }catch(e){}
   document.getElementById("foot").innerHTML=STATES[code].vintage+"<br>"+STATES[code].sources;
 }
 document.getElementById("state").onchange=e=>setActive(e.target.value);
