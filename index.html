@@ -741,13 +741,14 @@ function buildUtils(){
 }
 buildUtils();
 
-/* Auto-enable only the ACTIVE state's sewer + water-service layers. Loading all
-   nine is 5.7 MB and visually incoherent. Manual choices are never overridden. */
+/* Auto-enable only the ACTIVE state's sewer layer. Water service areas blanket
+   large areas and obscure the choropleth, so they stay opt-in. Manual choices
+   are never overridden. */
 function autoUtilsFor(code){
   const saveData = navigator.connection && navigator.connection.saveData;
   if(saveData) return;
   const S=STATES[code]; if(!S) return;
-  const want=new Set([S.screenUtils.sewer, S.screenUtils.water]);
+  const want=new Set([S.screenUtils.sewer]);   // sewer only; water stays manual
   ORDER.forEach(c=>{
     STATES[c].utils.forEach(u=>{
       if(userTouchedUtil[u.id]) return;               // respect manual choices
