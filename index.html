@@ -76,7 +76,7 @@ footer a{color:#7aa2f7}
   #side .ctrl label.hdr .caret{color:var(--muted)}
   #side .ctrl{padding:8px 12px}
   #list{max-height:38vh}
-  .legend{font-size:11px;line-height:1.5;padding:7px 9px;max-width:64vw;margin-bottom:16px}
+  .legend{font-size:11px;line-height:1.5;padding:7px 9px;max-width:64vw;margin-bottom:22px}
   .legend .denom{font-size:9.5px}
   #modal{padding:14px 8px}
   #modalBox{padding:16px 14px}
@@ -505,6 +505,8 @@ Promise.all(ORDER.map(loadState)).then(()=>{
   const b=L.latLngBounds([]);
   ORDER.forEach(c=>{ if(G[c]) b.extend(G[c].fill.getBounds()); });
   if(b.isValid()) map.fitBounds(b,{padding:[12,12]});
+  // phones finish laying out after this resolves; fit again once settled
+  if(window.matchMedia("(max-width: 820px)").matches) setTimeout(()=>{ try{ refitMap(); }catch(e){} },500);
 });
 
 /* ------------------------------- legend --------------------------------- */
@@ -794,6 +796,20 @@ document.getElementById("clickmode").onchange=e=>{
 };
 map.on("click",e=>{ if(clickMode) screenAt(e.latlng,null,false); });
 
+
+// Resize then fit, in that order, with the container settled in between.
+function refitMap(){
+  try{ map.invalidateSize(); }catch(e){}
+  setTimeout(()=>{
+    try{
+      map.invalidateSize();
+      const b=L.latLngBounds([]);
+      ORDER.forEach(c=>{ if(G[c]&&G[c].fill) b.extend(G[c].fill.getBounds()); });
+      if(b.isValid()) map.fitBounds(b,{padding:[8,8]});
+    }catch(e){}
+  },350);
+}
+
 // ---------- mobile: collapse the long sidebar sections ----------
 (function(){
   const mq=window.matchMedia("(max-width: 820px)");
@@ -830,15 +846,9 @@ map.on("click",e=>{ if(clickMode) screenAt(e.latlng,null,false); });
     });
     // the municipality table is long; hide it on phones until asked for
     if(list) list.style.display = small ? "none" : "";
-    // the map was sized for the other layout — re-fit so nothing is cropped
-    setTimeout(()=>{
-      try{
-        map.invalidateSize();
-        const b=L.latLngBounds([]);
-        ORDER.forEach(c=>{ if(G[c]&&G[c].fill) b.extend(G[c].fill.getBounds()); });
-        if(b.isValid()) map.fitBounds(b,{padding:[10,10]});
-      }catch(e){}
-    },200);
+    // The map was sized for the other layout. invalidateSize must finish before
+    // fitBounds, or it fits to the OLD container size and crops the region.
+    refitMap();
   }
   apply();
   // let the "Find a municipality" header reveal the table on phones
@@ -851,6 +861,7 @@ map.on("click",e=>{ if(clickMode) screenAt(e.latlng,null,false); });
     };
   }
   mq.addEventListener?mq.addEventListener("change",apply):mq.addListener(apply);
-  window.addEventListener("resize",()=>{ if(map) setTimeout(()=>map.invalidateSize(),120); });
+  let rz; window.addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(()=>{ try{ refitMap(); }catch(e){} },250); });
+  window.addEventListener("orientationchange",()=>{ setTimeout(()=>{ try{ refitMap(); }catch(e){} },400); });
 })();
 </script></body></html>
