@@ -607,7 +607,9 @@ function loadState(code){
     };
     // Touch devices have no hover, so a sticky tooltip never fires. Bind it only
     // where hovering exists; on touch the same content opens as a tap popup.
-    if(!TOUCH) hit.bindTooltip(contentFor,{sticky:true});
+    // Offset right so the tooltip box doesn't sit directly under the pointer and
+    // hide the outline of whatever town/tract is actually being hovered.
+    if(!TOUCH) hit.bindTooltip(contentFor,{sticky:true,offset:[20,0]});
     let hot=null;
     const cool=()=>{ if(hot){ try{hot.setStyle(CLEAR);}catch(e){} hot=null; } };
     if(!TOUCH){
