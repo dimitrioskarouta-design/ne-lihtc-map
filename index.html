@@ -710,7 +710,14 @@ async function fetchAllPages(url, extraQS){
       seen.add(key); out.push(f); added++;
     }
     if(added===0) break;                       // pagination unsupported — bail
-    if(feats.length<PAGE && !gj.exceededTransferLimit) break;
+    // Do NOT stop just because feats.length < PAGE. Some services (the Esri ACS
+    // boundary layers among them -- maxRecordCount 50, far below PAGE) cap every
+    // response at their own maxRecordCount regardless of what's requested, with
+    // no reliable exceededTransferLimit flag on f=geojson responses. A partial
+    // page is indistinguishable from a true last page by count alone; only an
+    // empty page (caught at the top of the next loop) means "done". This used to
+    // stop after one 50-record page on a CT-wide query that actually had several
+    // hundred matching tracts -- silently near-empty, no error.
     offset+=feats.length;
   }
   return out;

@@ -153,14 +153,28 @@ and read the layer list before assuming.
 rather than a JSON error. `fetchAllPages()` falls back to `f=json` and converts,
 using ring winding order to distinguish outer boundaries from holes.
 
-**Paging is mandatory.** ArcGIS caps each query at `maxRecordCount`. A single
-un-paged request silently returns a truncated set that looks complete. `fetchAllPages()`
-pages, de-dupes by object id, and bails if a service ignores `resultOffset`.
+**Paging is mandatory, and "fewer than requested" does not mean "done."**
+ArcGIS caps each query at `maxRecordCount` -- but the server enforces *its own* cap
+regardless of the `resultRecordCount` the client asks for, silently truncating every
+page to it. The Esri ACS boundary layers (used for CT's Location Index, and MA's tract
+poverty gate) cap at **50**, far below the `PAGE=1000` `fetchAllPages()` requests.
+`fetchAllPages()` used to stop as soon as a page came back shorter than `PAGE` -- correct
+for a layer whose `maxRecordCount` is >= `PAGE` (a short page really is the last one),
+silently wrong for one capped below it (a short page is just *a* page). On a CT-wide
+spatial query that actually matched several hundred tracts, this fetched only the first
+~50 -- one page, no error, no obviously-broken checkbox, just a layer that rendered nothing
+or next to nothing depending on whether any matching town happened to fall in that first
+page. Fixed: only an *empty* page (or `added===0`, i.e. the service ignoring
+`resultOffset` and replaying page 1) means done; a partial page still pages again.
+Costs one extra, otherwise-harmless trailing request on layers that were already correct.
+If you add a layer and it seems to load "some but not all" data with no warning shown,
+check `maxRecordCount` on `FeatureServer/<n>?f=pjson` before suspecting your join logic.
 
 **Temporal dead zone.** `applyBasemap()` runs at load and calls `restyle()`, which
 reads `const G` declared further down. The call is wrapped in try/catch. `node --check`
-will **not** catch this class of bug — it only parses. There's a `window.onerror`
-handler that prints script errors into the sidebar; keep it near the top.
+will **not** catch this class of bug — it only parses. There's a
+`window.addEventListener("error", ...)` handler that prints script errors into the
+sidebar; keep it near the top.
 
 **Boundary name fields differ and are often uppercase.** RIGIS is `NAME` uppercase,
 MassGIS is `TOWN` uppercase, CT is `TOWN`. All `lookup()` functions are
