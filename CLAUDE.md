@@ -96,12 +96,19 @@ heuristic, the layer will quietly render fewer tracts rather than wrong ones; th
 `extra()` point-lookup used by the address panel shares the same logic and the same
 failure mode.
 
-**Rendered as a hatch, not a flat fill.** High/Very High used the same greens/ambers as
-the town choropleth underneath and was invisible as a distinct layer — looked exactly
-like "the layer doesn't work". Fixed with two `<pattern>`s in a standalone hidden `<svg>`
-appended to `document.body` right after `map` is created, referenced from the util's
-`style` via `fillColor:"url(#locIdxHigh)"` / `"url(#locIdxVeryHigh)"`. `url(#id)`
-resolves document-wide, so the patterns don't need to live inside Leaflet's own SVG root.
+**Rendered as a hatch, not a flat fill — and in the town's own colour, not its own.**
+A flat High/Very-High fill with its own green/amber was both invisible against the town
+choropleth underneath (same colours) and a second, unrelated colour scale on the same
+map. Fixed two ways: (1) stripe, don't fill-flat — three `<pattern>`s (`locIdxGreen`/
+`locIdxBlue`/`locIdxGrey`) in a standalone hidden `<svg>` appended to `document.body`
+right after `map` is created, referenced via `fillColor:"url(#locIdx...)"` (`url(#id)`
+resolves document-wide, so the patterns don't need to live inside Leaflet's own SVG
+root); (2) the stripe's colour is `ctTierColor(CT_DATA[town][2])` — the same function
+`STATES.CT.color`/`score` use for the choropleth itself — not a colour tied to High vs.
+Very High. The stripe's *presence* is the High/Very-High signal; its colour always
+matches whatever the town underneath already is. `ctTierColor` is 3-tier: green >=8,
+blue 6–7, grey <=5 (not the CT QAP's own breakpoints — a deliberate simplification from
+an earlier 4-tier scheme, requested directly).
 
 **postProcess must await the state it joins against.** `buildUtils()` wires the
 checkboxes synchronously; `loadState("CT")`'s fetch hasn't resolved yet. A click in that
