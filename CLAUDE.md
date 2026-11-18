@@ -96,6 +96,23 @@ heuristic, the layer will quietly render fewer tracts rather than wrong ones; th
 `extra()` point-lookup used by the address panel shares the same logic and the same
 failure mode.
 
+**Rendered as a hatch, not a flat fill.** High/Very High used the same greens/ambers as
+the town choropleth underneath and was invisible as a distinct layer — looked exactly
+like "the layer doesn't work". Fixed with two `<pattern>`s in a standalone hidden `<svg>`
+appended to `document.body` right after `map` is created, referenced from the util's
+`style` via `fillColor:"url(#locIdxHigh)"` / `"url(#locIdxVeryHigh)"`. `url(#id)`
+resolves document-wide, so the patterns don't need to live inside Leaflet's own SVG root.
+
+**postProcess must await the state it joins against.** `buildUtils()` wires the
+checkboxes synchronously; `loadState("CT")`'s fetch hasn't resolved yet. A click in that
+window found `G.CT` empty, `locate()` matched nothing, postProcess returned `[]`, and
+`loadUtil` cached that empty `[]` in IndexedDB for 7 days — same "doesn't work" symptom,
+but persistent across reloads. Fixed by keeping each state's load promise in
+`stateLoaded[code]` (not just `Promise.all`-ing them away) and having the CT Location
+Index's `postProcess` `await stateLoaded.CT` before joining. The util's `id` was bumped
+`ct_locidx` → `ct_locidx2` specifically to bust any empty result already cached under the
+old id — a code fix alone doesn't invalidate a cache keyed by an unchanged id.
+
 If you add data, classify it and put it in the About panel. A future reader must be
 able to tell what needs revisiting.
 

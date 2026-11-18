@@ -324,7 +324,7 @@ const STATES = {
        url:"https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Connected_Sewer_Service_Areas/FeatureServer/0"},
       {id:"ct_water", label:"CT water ESA (DPH/WUCC)", color:"#c77dff",
        url:"https://maps.ct.gov/arcgis/rest/services/Hosted/Exclusive_Service_Areas/FeatureServer/1"},
-      {id:"ct_locidx", label:"CT Location Index — High/Very High tracts (set-aside)", color:"#3aa655",
+      {id:"ct_locidx2", label:"CT Location Index — High/Very High tracts (set-aside)", color:"#3aa655",
        url:"https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/ACS_Poverty_by_Age_Boundaries/FeatureServer/2",
        extraQS:"&geometry="+encodeURIComponent(JSON.stringify({xmin:-73.75,ymin:40.90,xmax:-71.75,ymax:42.10,spatialReference:{wkid:4326}}))+
                "&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&inSR=4326",
@@ -332,7 +332,13 @@ const STATES = {
        // locate() it against the already-loaded CT town polygons, then look up its
        // code (built from any 6+ digit GEOID/TRACTCE-shaped property) in CT_LOC[town].
        // Keeps only High/Very High -- that's the layer the Location Set-aside targets.
-       postProcess: feats=>{
+       // Awaits CT's own boundary load first: without that, a click before loadState("CT")
+       // resolves finds G.CT empty, locate() matches nothing, and an empty result gets
+       // IndexedDB-cached for 7 days looking exactly like "the layer doesn't work". (id is
+       // "ct_locidx2", not "ct_locidx", to bust any such empty result already cached under
+       // the old id from before this fix.)
+       postProcess: async feats=>{
+         await (stateLoaded.CT||Promise.resolve()).catch(()=>{});
          const out=[];
          for(const f of feats){
            const props=f.properties||{}, g=f.geometry; if(!g) continue;
@@ -354,8 +360,13 @@ const STATES = {
          }
          return out;
        },
-       style: f=>{ const c = f.properties.rank==="Very High" ? "#3aa655" : "#e3c22b";
-         return {color:c, weight:1, fillColor:c, fillOpacity:.45}; }}
+       // Striped, not flat-filled: a flat High/Very-High fill used the same greens/ambers
+       // as the town choropleth underneath and was indistinguishable from it. The patterns
+       // are defined once, in a standalone hidden <svg>, right after this config (see
+       // "Location Index stripe patterns" below) -- referenced here by #id, not inlined,
+       // because `url(#id)` resolves document-wide regardless of which <svg> owns the <pattern>.
+       style: f=>{ const hi=f.properties.rank==="Very High", c = hi?"#3aa655":"#e3c22b";
+         return {color:c, weight:1.5, opacity:.9, fillColor:"url(#locIdx"+(hi?"VeryHigh":"High")+")", fillOpacity:1}; }}
     ],
     screenUtils:{water:"ct_water", sewer:"ct_sewer"},
     sources:'Boundaries <a href="https://github.com/HandsOnDataViz/ct-boundaries" target="_blank">ct-boundaries</a> · Scores &amp; Location Index <a href="https://www.chfa.org/assets/1/19/!2027-2028_Housing_Needs__Location_Guideline_publish.pdf" target="_blank">CHFA 2027–28 Guideline</a> · <a href="https://geodata.ct.gov/datasets/CTDEEP::connected-sewer-service-areas/about" target="_blank">DEEP sewer</a>'
@@ -492,6 +503,21 @@ const ESRI_ATTR="Imagery &copy; Esri — Esri, Maxar, Earthstar Geographics and 
 const map=L.map("map").setView([42.0,-71.6],7);
 map.createPane("labels"); map.getPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
 
+/* Location Index stripe patterns. A standalone hidden <svg>, not part of Leaflet's own
+   SVG root -- `fill="url(#id)"` on any path resolves against the whole document, so this
+   doesn't need to live inside Leaflet's renderer. Faint tile wash + a bolder diagonal bar,
+   rotated 45°, in each rank's colour -- chosen so the layer reads as an overlay distinct
+   from the town choropleth underneath rather than a second, confusingly identical fill. */
+document.body.insertAdjacentHTML("beforeend",
+  `<svg width="0" height="0" style="position:absolute"><defs>
+    <pattern id="locIdxHigh" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="#e3c22b" fill-opacity=".18"/><rect width="3" height="7" fill="#e3c22b" fill-opacity=".8"/>
+    </pattern>
+    <pattern id="locIdxVeryHigh" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="#3aa655" fill-opacity=".18"/><rect width="3" height="7" fill="#3aa655" fill-opacity=".8"/>
+    </pattern>
+  </defs></svg>`);
+
 // Two basemaps. Satellite needs a lighter choropleth so imagery reads through,
 // and a light label set — dark CARTO labels are illegible over aerial photos.
 const BASEMAPS={
@@ -598,7 +624,12 @@ function loadState(code){
     lift();
   }).catch(e=>warn(S.label+" boundaries failed to load ("+(e.message||"network")+")."));
 }
-Promise.all(ORDER.map(loadState)).then(()=>{
+// Per-state load promises, kept around (not just Promise.all'd away) so other
+// code -- e.g. the CT Location Index join -- can await a specific state's
+// boundaries instead of racing G[code] before loadState's fetch resolves.
+const stateLoaded={};
+ORDER.forEach(c=>{ stateLoaded[c]=loadState(c); });
+Promise.all(Object.values(stateLoaded)).then(()=>{
   const b=L.latLngBounds([]);
   ORDER.forEach(c=>{ if(G[c]) b.extend(G[c].fill.getBounds()); });
   if(b.isValid()) map.fitBounds(b,{padding:[12,12]});
@@ -769,7 +800,7 @@ async function loadUtil(u,cb){
     // postProcess: join/filter against already-loaded state data (e.g. spatial
     // join of fetched tracts against town boundaries). Runs on raw fetch only —
     // the cache stores the processed result, so repeat loads skip it.
-    if(typeof u.postProcess==="function") feats=u.postProcess(feats);
+    if(typeof u.postProcess==="function") feats=await u.postProcess(feats);
     if(ulayers[u.id]) drawUtil(u,feats);
     await cachePut(u.id,feats);
     newestCacheStamp=Date.now(); stampCacheNote();
