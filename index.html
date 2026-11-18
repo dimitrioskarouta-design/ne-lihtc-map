@@ -324,7 +324,7 @@ const STATES = {
        url:"https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Connected_Sewer_Service_Areas/FeatureServer/0"},
       {id:"ct_water", label:"CT water ESA (DPH/WUCC)", color:"#c77dff",
        url:"https://maps.ct.gov/arcgis/rest/services/Hosted/Exclusive_Service_Areas/FeatureServer/1"},
-      {id:"ct_locidx2", label:"CT Location Index — High/Very High tracts (set-aside)", color:"#3aa655",
+      {id:"ct_locidx3", label:"CT Location Index — High/Very High tracts (set-aside)", color:"#3aa655",
        url:"https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/ACS_Poverty_by_Age_Boundaries/FeatureServer/2",
        extraQS:"&geometry="+encodeURIComponent(JSON.stringify({xmin:-73.75,ymin:40.90,xmax:-71.75,ymax:42.10,spatialReference:{wkid:4326}}))+
                "&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&inSR=4326",
@@ -334,9 +334,11 @@ const STATES = {
        // Keeps only High/Very High -- that's the layer the Location Set-aside targets.
        // Awaits CT's own boundary load first: without that, a click before loadState("CT")
        // resolves finds G.CT empty, locate() matches nothing, and an empty result gets
-       // IndexedDB-cached for 7 days looking exactly like "the layer doesn't work". (id is
-       // "ct_locidx2", not "ct_locidx", to bust any such empty result already cached under
-       // the old id from before this fix.)
+       // IndexedDB-cached for 7 days looking exactly like "the layer doesn't work". id has
+       // been bumped twice now (ct_locidx -> ct_locidx2 -> ct_locidx3), each time to bust
+       // a bad result already cached under the previous id -- ct_locidx2 was live for one
+       // commit that still had the fetchAllPages early-stop-on-partial-page bug below, so
+       // testing against it could have cached a truncated result too.
        postProcess: async feats=>{
          await (stateLoaded.CT||Promise.resolve()).catch(()=>{});
          const out=[];
