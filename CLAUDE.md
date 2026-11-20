@@ -177,6 +177,22 @@ Costs one extra, otherwise-harmless trailing request on layers that were already
 If you add a layer and it seems to load "some but not all" data with no warning shown,
 check `maxRecordCount` on `FeatureServer/<n>?f=pjson` before suspecting your join logic.
 
+**This bites `loadState()` too, not just utility layers.** RI and MA's own town
+boundaries come from a live ArcGIS `/query`, and `loadState()` used to fetch that with a
+single raw `fetch()` — no pagination, trusting the server to return every town in one
+response. MA has 351 municipalities, the most of the three states by far, which makes it
+the one most likely to actually hit a `maxRecordCount` cap; a user reported "the
+Massachusetts map didn't render," which a silent partial-boundary-set would produce
+(not a hard failure — `loadState`'s `.catch` never fires, there's just visibly less map
+than there should be). `src` now has two shapes: `{kind:"geojson", url}` for a static
+file (CT, unaffected — it's not an ArcGIS query at all) and `{kind:"arcgis", url, where?}`
+for a live query (RI, MA), and `loadState()` routes the latter through `fetchAllPages()`
+instead of a raw fetch, same as utility layers. `fetchAllPages()` gained a third
+parameter, `whereClause` (default `"1=1"`), since RI's boundary query needs
+`where=LAND='Y'` and utility layers' calls are unaffected by the new default. Verified
+against a mock server that caps every page at 50 features (standing in for MA's actual
+351 towns) regardless of what's requested — confirmed `G.MA.feats.length` ends at 351.
+
 **Temporal dead zone.** `applyBasemap()` runs at load and calls `restyle()`, which
 reads `const G` declared further down. The call is wrapped in try/catch. `node --check`
 will **not** catch this class of bug — it only parses. There's a

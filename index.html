@@ -387,7 +387,7 @@ const STATES = {
   RI: {
     label:"Rhode Island", center:[41.68,-71.55],
     vintage:"2026 QAP · Final 2025 LMIH chart · Housing 2030 (adopted Dec 2025)",
-    src:{kind:"geojson", url:"https://services2.arcgis.com/S8zZg9pg23JUEexQ/arcgis/rest/services/BND_Municipalities_1997_spf/FeatureServer/0/query?where=LAND%3D%27Y%27&outFields=NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0004&geometryPrecision=5&f=geojson"},
+    src:{kind:"arcgis", url:"https://services2.arcgis.com/S8zZg9pg23JUEexQ/arcgis/rest/services/BND_Municipalities_1997_spf/FeatureServer/0", where:"LAND='Y'"},
     nameOf:p=>String((p&&(p.NAME||p.name))||"").trim(),
     lookup:n=>{const k=Object.keys(RI_DATA).find(x=>x.toUpperCase()===String(n).toUpperCase());
                return k?{name:k,d:RI_DATA[k]}:null;},
@@ -436,7 +436,7 @@ const STATES = {
   ,MA: {
     label:"Massachusetts", center:[42.3,-71.8],
     vintage:"2025–2026 EOHLC QAP (final) · SHI 9/30/2025 · EOHLC Job Accessibility chart · rural from MassGIS 2020 pop/area",
-    src:{kind:"geojson", url:"https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Municipalities_Hosted/FeatureServer/0/query?where=1%3D1&outFields=TOWN,POP2020,AREA_SQMI&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0004&geometryPrecision=5&f=geojson"},
+    src:{kind:"arcgis", url:"https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Municipalities_Hosted/FeatureServer/0"},
     nameOf:p=>String((p&&(p.TOWN||p.NAME||p.town))||"").trim(),
     lookup:function(n){const k=Object.keys(MA_DATA).find(x=>x.toUpperCase()===String(n).toUpperCase());
       return k?{name:k,d:MA_DATA[k]}:null;},
@@ -595,7 +595,16 @@ const TOUCH = window.matchMedia("(hover: none), (pointer: coarse)").matches || (
 const CLEAR={color:"#fff",weight:0,opacity:0,fillOpacity:0};
 function loadState(code){
   const S=STATES[code];
-  return fetch(S.src.url).then(r=>r.json()).then(gj=>{
+  // RI and MA boundaries come from a live ArcGIS query, unpaginated -- a single fetch
+  // trusts the server to return every town in one response. MA has 351 of them, by far
+  // the most of the three states, and is exactly the shape of the bug fetchAllPages()
+  // was just fixed for on a different layer: a server-side maxRecordCount cap silently
+  // truncates one un-paged request to a partial set, with no error, no warning -- it
+  // just looks broken. Route these through fetchAllPages() instead of a raw fetch.
+  const fetchGeo = S.src.kind==="arcgis"
+    ? fetchAllPages(S.src.url, "", S.src.where).then(feats=>({type:"FeatureCollection", features:feats}))
+    : fetch(S.src.url).then(r=>r.json());
+  return fetchGeo.then(gj=>{
     const fill=L.geoJSON(gj,{style:styleFor(code),interactive:false}).addTo(map);
     const hit=L.geoJSON(gj,{style:()=>CLEAR}).addTo(map);
     // ONE tooltip per state layer — per-feature tooltips linger when moving
@@ -693,11 +702,12 @@ function esriToGeoJSON(feats){
   }).filter(f=>f.geometry);
 }
 
-async function fetchAllPages(url, extraQS){
+async function fetchAllPages(url, extraQS, whereClause){
   const PAGE=1000, out=[], seen=new Set();
   let offset=0, fmt="geojson";
+  const where=encodeURIComponent(whereClause||"1=1");
   for(let guard=0; guard<80; guard++){
-    const q=url+"/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326"+
+    const q=url+"/query?where="+where+"&outFields=*&returnGeometry=true&outSR=4326"+
             "&maxAllowableOffset=0.0004&geometryPrecision=5&f="+fmt+(extraQS||"")+
             "&resultOffset="+offset+"&resultRecordCount="+PAGE;
     const r=await fetch(q);
