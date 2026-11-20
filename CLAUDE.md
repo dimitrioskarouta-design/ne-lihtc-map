@@ -123,6 +123,21 @@ old id — a code fix alone doesn't invalidate a cache keyed by an unchanged id.
 If you add data, classify it and put it in the About panel. A future reader must be
 able to tell what needs revisiting.
 
+### MA rural-sites shortlist (`MA_RURAL_SITES`)
+
+A curated 8-town highlight (Lincoln, Ipswich, Rowley, Middleborough, Lakeville,
+Freetown, Halifax, Shirley), requested directly — **not** derived from the B-7 rural
+test (`density < 500/sq mi`); some of these sit well above that line. Toggled by the
+`#ma_ruralsites` checkbox, drawn as a dashed outline (no fill, so the choropleth
+underneath still shows) over whatever's already in `G.MA.feats` — it does not fetch
+anything of its own, so it bypasses the `utils[]`/`fetchAllPages` machinery entirely.
+Matches town names case-insensitively (`.toUpperCase()`), same as every other
+`lookup()` in this file, since MassGIS's `TOWN` field is uppercase. Same race as the CT
+Location Index: `G.MA` isn't populated until `loadState("MA")` resolves, so the
+checkbox handler awaits `stateLoaded.MA` (re-checking `e.target.checked` after, in case
+the user un-checked it while waiting) rather than reading `G.MA` straight off a
+synchronous click.
+
 ### Utility layer cache (IndexedDB, stale-while-revalidate)
 
 CT DEEP's sewer service takes **12–19 seconds** on every request — it generalises very

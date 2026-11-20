@@ -248,6 +248,8 @@ years; (4) RIHousing's newer LMIH chart, published annually. The live layers abo
   </select>
   <div class="chk" style="margin-top:7px">
     <label class="cb"><input type="checkbox" id="roads"><span class="sw" style="background:#8b93a3"></span>Roads &amp; labels</label></div>
+  <div class="chk" style="margin-top:7px">
+    <label class="cb"><input type="checkbox" id="ma_ruralsites"><span class="sw" style="background:#ff3fa4"></span>MA — highlight 8 rural sites</label></div>
 </div>
 <div class="note" id="utilnote"></div>
 </div>
@@ -274,6 +276,11 @@ const RI_DATA = {"Barrington": {"cat": "Continued Growth", "met": false, "pct": 
 // Shared by the CT choropleth (color/score) and the Location Index stripe style,
 // so a tract's stripe colour always matches its town's own choropleth colour.
 function ctTierColor(total){ return total>=8?"#3aa655":total>=6?"#3d7fc1":"#6e7480"; }
+
+// A curated shortlist, not derived from the B-7 rural test (some of these are near the
+// 500/sq mi line rather than clearly under it) -- highlighted on request, independent
+// of whatever MA's active choropleth happens to be coloring them.
+const MA_RURAL_SITES = ["Lincoln","Ipswich","Rowley","Middleborough","Lakeville","Freetown","Halifax","Shirley"];
 
 const STATES = {
   CT: {
@@ -572,6 +579,24 @@ function warn(m){ note.innerHTML='<span class="warn">⚠ '+m+'</span>'+note.inne
 window.addEventListener("error",e=>warn("Script error: "+(e.message||"?")+" (line "+(e.lineno||"?")+")"));
 
 document.getElementById("roads").onchange=function(e){ roadsOn=e.target.checked; applyBasemap(); };
+
+// MA rural-sites shortlist highlight. Built from already-loaded MA boundaries (G.MA.feats)
+// -- no fetch of its own, so this skips the utils[]/fetchAllPages machinery entirely.
+// Same lesson as the CT Location Index race: don't touch G.MA before loadState("MA")
+// resolves, or a click right after page load finds it empty and highlights nothing.
+let maRuralLayer=null;
+function drawMaRuralSites(){
+  if(maRuralLayer){ map.removeLayer(maRuralLayer); maRuralLayer=null; }
+  if(!G.MA) return;
+  const want=new Set(MA_RURAL_SITES.map(n=>n.toUpperCase()));
+  const feats=G.MA.feats.filter(f=>want.has(STATES.MA.nameOf(f.properties).toUpperCase()));
+  maRuralLayer=L.geoJSON({type:"FeatureCollection",features:feats},
+    {style:{color:"#ff3fa4",weight:3,opacity:1,fillOpacity:0,dashArray:"6 4"},interactive:false}).addTo(map);
+}
+document.getElementById("ma_ruralsites").onchange=function(e){
+  if(!e.target.checked){ if(maRuralLayer){ map.removeLayer(maRuralLayer); maRuralLayer=null; } return; }
+  (stateLoaded.MA||Promise.resolve()).catch(()=>{}).then(()=>{ if(e.target.checked) drawMaRuralSites(); });
+};
 document.getElementById("basemap").onchange=function(e){ baseKey=e.target.value; applyBasemap(); };
 applyBasemap();
 
